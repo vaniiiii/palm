@@ -3,6 +3,9 @@ set -euo pipefail
 
 source .env
 
+# Use localhost for RPC when deploying from host (anvil:8545 only works inside docker)
+DEPLOY_RPC_URL="${DEPLOY_RPC_URL:-http://localhost:8545}"
+
 CCA_DIR="${CCA_DIR:-/opt/continuous-clearing-auction}"
 PALM_DIR="${PALM_DIR:-/opt/palm}"
 
@@ -13,7 +16,7 @@ fi
 
 echo "Deploying CCA Factory..."
 FACTORY_OUTPUT=$(cd "$CCA_DIR" && forge create src/ContinuousClearingAuctionFactory.sol:ContinuousClearingAuctionFactory \
-    --rpc-url "$RPC_URL" \
+    --rpc-url "$DEPLOY_RPC_URL" \
     --private-key "$DEPLOYER_PRIVATE_KEY" \
     --broadcast 2>&1)
 
@@ -24,7 +27,7 @@ echo "Deploying Palm contracts..."
 DEPLOY_OUTPUT=$(cd "$PALM_DIR/packages/contracts" && \
     FACTORY="$FACTORY" PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY" ENABLE_KYC="${ENABLE_KYC:-false}" \
     forge script script/Deploy.s.sol:Deploy \
-        --rpc-url "$RPC_URL" \
+        --rpc-url "$DEPLOY_RPC_URL" \
         --broadcast \
         -v 2>&1)
 
