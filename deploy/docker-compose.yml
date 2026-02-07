@@ -27,6 +27,7 @@ services:
       - CHAIN_ID=${CHAIN_ID}
       - START_BLOCK=${START_BLOCK:-0}
       - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder
+      - DATABASE_SCHEMA=public
     expose:
       - "42069"
     depends_on:
