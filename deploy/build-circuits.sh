@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+apt-get update && apt-get install -y unzip
+
 command -v rustc >/dev/null || {
     curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
     source ~/.cargo/env
