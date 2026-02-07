@@ -1,0 +1,13 @@
+{
+  "name": "palm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ZK Email KYC ValidationHook for Uniswap CCA",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build:circuits": "bun run --filter @palm/circuits build",
+    "build:contracts": "bun run --filter @palm/contracts build",
+    "test:circuits": "bun run --filter @palm/circuits test",
+    "test:contracts": "bun run --filter @palm/contracts test"
+  }
+}
