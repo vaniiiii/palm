@@ -1,0 +1,61 @@
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    command: anvil --host 0.0.0.0 --block-time 2
+    profiles: [anvil]
+    expose:
+      - "8545"
+
+  prover:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.prover
+    environment:
+      - PORT=3001
+    expose:
+      - "3001"
+    volumes:
+      - ../packages/circuits/build:/app/packages/circuits/build:ro
+
+  indexer:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.indexer
+    environment:
+      - RPC_URL=${RPC_URL}
+      - FACTORY_ADDRESS=${FACTORY_ADDRESS}
+      - CHAIN_ID=${CHAIN_ID}
+      - START_BLOCK=${START_BLOCK:-0}
+      - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder
+    expose:
+      - "42069"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=ponder
+      - POSTGRES_PASSWORD=ponder
+      - POSTGRES_DB=ponder
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      - API_DOMAIN=${API_DOMAIN}
+      - INDEXER_DOMAIN=${INDEXER_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on:
+      - prover
+      - indexer
+
+volumes:
+  pgdata:
+  caddy_data:

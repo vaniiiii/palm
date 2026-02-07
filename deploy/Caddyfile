@@ -1,0 +1,7 @@
+{$API_DOMAIN} {
+	reverse_proxy prover:3001
+}
+
+{$INDEXER_DOMAIN} {
+	reverse_proxy indexer:42069
+}

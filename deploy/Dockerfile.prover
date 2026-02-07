@@ -1,0 +1,16 @@
+FROM oven/bun:1-alpine
+
+WORKDIR /app
+
+COPY package.json bun.lock ./
+COPY packages/app/package.json packages/app/
+COPY packages/circuits/package.json packages/circuits/
+
+RUN bun install --frozen-lockfile
+
+COPY packages/app packages/app
+COPY packages/circuits packages/circuits
+
+EXPOSE 3001
+
+CMD ["bun", "run", "packages/app/server/prove.ts"]
