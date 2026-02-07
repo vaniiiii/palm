@@ -283,7 +283,7 @@ contract PalmValidationHookTest is Test {
     }
 }
 
-contract PalmValidationHookIntegrationTest is Test {
+contract PalmValidationHookEchoIntegrationTest is Test {
     PalmValidationHook hook;
     PalmEchoVerifier echoVerifier;
     MockVerifier legionVerifier;
@@ -339,5 +339,66 @@ contract PalmValidationHookIntegrationTest is Test {
         hook.validate(1 ether, 100, bidOwner, bidOwner, hookData);
 
         assertEq(hook.nullifierOwner(EMAIL_NULLIFIER), bidOwner);
+    }
+}
+
+import {PalmLegionVerifier} from "../src/verifiers/PalmLegionVerifier.sol";
+
+contract PalmValidationHookLegionIntegrationTest is Test {
+    PalmValidationHook hook;
+    MockVerifier echoVerifier;
+    PalmLegionVerifier legionVerifier;
+
+    address auction = address(0xAA);
+    address bidOwner = address(0xeab5fd96f1460673Dc4061858bF0f31386289ceA);
+
+    uint256 constant LEGION_PUBKEY_HASH = 0x223b42a65d210d9b0cddf60f1a5f48b311ad4d399e805ef3a199c71e54d10ac0;
+    uint256 constant LEGION_EMAIL_NULLIFIER = 0x273d18e0199b3de21489486aeacaa1dacc553a4970526fd710c214db612ee273;
+
+    function setUp() public {
+        echoVerifier = new MockVerifier();
+        legionVerifier = new PalmLegionVerifier();
+
+        uint256[] memory initialHashes = new uint256[](1);
+        initialHashes[0] = LEGION_PUBKEY_HASH;
+
+        uint8[] memory providers = new uint8[](2);
+        providers[0] = 0; // echo
+        providers[1] = 1; // legion
+
+        hook = new PalmValidationHook(
+            auction,
+            IGroth16Verifier(address(echoVerifier)),
+            IGroth16Verifier(address(legionVerifier)),
+            250 ether,
+            initialHashes,
+            providers
+        );
+    }
+
+    function test_realLegionProof() public {
+        uint256[8] memory proof = [
+            0x02ba628a098cfcedc5d9cb5ffcf84171f4cf7c00bdb0f379154c8e040a5e4e87,
+            0x04ccfabfd348f34d9ac60ec66bbfa1a6bb47c738b4ca8debec09cb30a59cf1b9,
+            0x04a1a175e8288b4bbfa17e01e73e157fd64ab0d9f28d90859750eb6ece8765be,
+            0x1ebf702e80eb0354df4a06c75c8f31b5a271c10d05098fa90736c4d04d2a25a7,
+            0x302f4d75b468b549b3379c271617a044f6c6fc66ae930687584c5061b5d004b9,
+            0x2a0fbe126f15287ec197c6801a2a6d1c8bc0dd415d0e86502727f256064ab1c0,
+            0x05faf14748908e44aa208f89c7e91f76915b5ee82e8824227c416a9ea65dd2d4,
+            0x04942ab53af2e3a535934b04694ffdfeb9e177b2373120e7c980ed9e5acda5c0
+        ];
+
+        uint256[3] memory signals = [
+            LEGION_PUBKEY_HASH,
+            LEGION_EMAIL_NULLIFIER,
+            uint256(uint160(bidOwner))
+        ];
+
+        bytes memory hookData = abi.encode(uint8(1), proof, signals);
+
+        vm.prank(auction);
+        hook.validate(1 ether, 100, bidOwner, bidOwner, hookData);
+
+        assertEq(hook.nullifierOwner(LEGION_EMAIL_NULLIFIER), bidOwner);
     }
 }
