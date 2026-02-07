@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #1a1a1b;
+  color: #dfd9d9;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  tab-size: 4;
+  font-feature-settings: normal;
+  font-variation-settings: normal;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3d3d3d; border-radius: 0; }
+* { scrollbar-width: thin; scrollbar-color: #3d3d3d transparent; }
+
+/* Selection */
+::selection {
+  background: #29665f;
+  color: #2bfae9;
+}
+
+/* Input overrides */
+input {
+  user-select: text;
+  -webkit-user-select: text;
+}
+input::placeholder { color: #918b7f; }
+input:focus { outline: none; }
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Stat tile hover */
+.stat-tile { transition: background 0.15s ease; }
+.stat-tile:hover { background: #353535; }
+
+/* Pulse animation for proving spinner */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(43, 250, 233, 0.4); }
+  50% { box-shadow: 0 0 20px 4px rgba(43, 250, 233, 0.15); }
+}
+.pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+
+/* ---- Marquee ---- */
+@keyframes marquee-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 30s linear infinite;
+}
+.marquee-track:hover { animation-play-state: paused; }
+
+/* ---- Clip corners (MegaETH-style) ---- */
+.clip-corner-tl {
+  clip-path: polygon(24px 0, 100% 0, 100% 100%, 0 100%, 0 24px);
+}
+.clip-corner-br {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 24px) 100%, 0 100%);
+}
+.clip-corner-both {
+  clip-path: polygon(24px 0, 100% 0, 100% calc(100% - 24px), calc(100% - 24px) 100%, 0 100%, 0 24px);
+}
+
+/* ---- Bracket button hover ---- */
+.bracket-btn .br-l,
+.bracket-btn .br-r {
+  transition: transform 0.2s ease;
+}
+.bracket-btn:hover .br-l { transform: translateX(-3px); }
+.bracket-btn:hover .br-r { transform: translateX(3px); }
+.bracket-btn:hover {
+  background: #dfd9d9;
+  color: #1a1a1b;
+}
+
+/* ---- Horizontal rule with glow ---- */
+.hr-glow {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #2bfae9, transparent);
+  border: none;
+}
+
+/* ---- Grid line decoration ---- */
+.grid-lines {
+  background-image:
+    linear-gradient(rgba(61,61,61,0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(61,61,61,0.3) 1px, transparent 1px);
+  background-size: 60px 60px;
+}

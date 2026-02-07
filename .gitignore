@@ -20,10 +20,6 @@ bun.lock
 packages/circuits/build/
 packages/circuits/proofs/
 
-packages/contracts/cache/
-packages/contracts/out/
-packages/contracts/broadcast/
-
 packages/indexer/.ponder/
 
 packages/app/dist/
