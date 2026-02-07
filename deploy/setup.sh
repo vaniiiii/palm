@@ -34,7 +34,7 @@ fi
 
 if [[ ! -d /opt/rapidsnark ]]; then
     apt-get update && apt-get install -y build-essential cmake libgmp-dev nasm
-    git clone https://github.com/AztecProtocol/rapidsnark /opt/rapidsnark
+    git clone https://github.com/iden3/rapidsnark /opt/rapidsnark
     cd /opt/rapidsnark
     git submodule update --init --recursive
     ./build_gmp.sh host
