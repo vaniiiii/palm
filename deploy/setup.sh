@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/YOUR_ORG/palm.git}"
+REPO_URL="${REPO_URL:-https://github.com/vaniiiii/palm.git}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/palm}"
 
 SERVER_IP=$(curl -4 -s ifconfig.me)
