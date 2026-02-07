@@ -65,6 +65,16 @@ const ERC20_ABI = [
     outputs: [{ name: "", type: "uint8" }],
     stateMutability: "view",
   },
+  {
+    name: "mint",
+    type: "function",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
 ] as const;
 
 interface LaunchAuctionPageProps {
@@ -106,6 +116,15 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
   const { isLoading: isDeployConfirming, isSuccess: isDeploySuccess } = useWaitForTransactionReceipt({
     hash: deployHash,
   });
+
+  const { writeContract: writeMint, data: mintHash, isPending: isMinting } = useWriteContract();
+  const { isLoading: isMintConfirming, isSuccess: isMintSuccess } = useWaitForTransactionReceipt({
+    hash: mintHash,
+  });
+
+  useEffect(() => {
+    if (isMintSuccess) fetchTokenInfo();
+  }, [isMintSuccess]);
 
   // Factory address from env
   const factoryAddress = import.meta.env.VITE_FACTORY_ADDRESS as Address | undefined;
@@ -169,6 +188,17 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
     const mpsHex = mps.toString(16).padStart(6, "0");
     const blocksHex = blocks.toString(16).padStart(10, "0");
     return `0x${mpsHex}${blocksHex}` as `0x${string}`;
+  };
+
+  const handleMint = () => {
+    if (!tokenAddress || !address) return;
+    const mintAmount = parseUnits("1000000", tokenDecimals);
+    writeMint({
+      address: tokenAddress as Address,
+      abi: ERC20_ABI,
+      functionName: "mint",
+      args: [address, mintAmount],
+    });
   };
 
   // Handle approval
@@ -339,6 +369,13 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
                   <span className="text-palm-text-3">
                     Balance: {tokenBalance ? (Number(tokenBalance) / 10 ** tokenDecimals).toLocaleString() : "0"}
                   </span>
+                  <button
+                    onClick={handleMint}
+                    disabled={isMinting || isMintConfirming}
+                    className="px-2 py-1 text-[10px] bg-palm-bg border border-palm-border text-palm-cyan hover:bg-palm-bg-secondary transition-colors disabled:opacity-50"
+                  >
+                    {isMinting || isMintConfirming ? "Minting..." : "Mint 1M"}
+                  </button>
                 </div>
               )}
             </div>
