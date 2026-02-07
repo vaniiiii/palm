@@ -1,0 +1,8 @@
+{
+  "parts": [
+    {
+      "is_public": false,
+      "regex_def": "ID verification has been successful"
+    }
+  ]
+}
