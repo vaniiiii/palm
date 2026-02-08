@@ -5,6 +5,37 @@ import { FixedPoint96, MPS, q96ToWei } from './utils/auction-utils';
 import { and, desc, eq, gt, inArray, isNull, lt, sql } from 'ponder';
 import { decodeAbiParameters } from 'viem';
 
+const IS_LOCAL = Number(process.env.CHAIN_ID || '31337') === 31337;
+const DEPLOYER = (process.env.DEPLOYER_ADDRESS || '0x4006c797Fd3850473b7bEc993a86a77fE7Ab882d').toLowerCase();
+
+const CONFIG_COMPONENTS = [{
+  type: 'tuple',
+  components: [
+    { name: 'currency', type: 'address' },
+    { name: 'tokensRecipient', type: 'address' },
+    { name: 'fundsRecipient', type: 'address' },
+    { name: 'startBlock', type: 'uint64' },
+    { name: 'endBlock', type: 'uint64' },
+    { name: 'claimBlock', type: 'uint64' },
+    { name: 'tickSpacing', type: 'uint256' },
+    { name: 'validationHook', type: 'address' },
+    { name: 'floorPrice', type: 'uint256' },
+    { name: 'requiredCurrencyRaised', type: 'uint128' },
+    { name: 'auctionStepsData', type: 'bytes' },
+  ],
+}] as const;
+
+function isDeployer(configData: `0x${string}`): boolean {
+  if (IS_LOCAL) return true;
+  try {
+    const [params] = decodeAbiParameters(CONFIG_COMPONENTS, configData);
+    return params.fundsRecipient.toLowerCase() === DEPLOYER ||
+           params.tokensRecipient.toLowerCase() === DEPLOYER;
+  } catch {
+    return false;
+  }
+}
+
 // Helper: get auction address from event (lowercase for consistent IDs)
 function auctionAddr(event: { log: { address: string } }): string {
   return event.log.address.toLowerCase();
@@ -20,49 +51,19 @@ function auctionContract(address: string) {
 
 // ---- Factory event: AuctionCreated ----
 ponder.on('AuctionFactory:AuctionCreated', async ({ event, context }) => {
+  if (!isDeployer(event.args.configData)) return;
+
   const addr = event.args.auction.toLowerCase();
   console.time(`AuctionFactory:AuctionCreated-${addr}`);
 
-  // Decode AuctionParameters from configData
-  let currency = '0x0000000000000000000000000000000000000000' as `0x${string}`;
-  let validationHook = '0x0000000000000000000000000000000000000000' as `0x${string}`;
-  let startBlock = 0;
-  let endBlock = 0;
-  let claimBlock = 0;
-  let floorPrice = 0n;
-  let tickSpacing = 0n;
-  try {
-    const [params] = decodeAbiParameters(
-      [
-        {
-          type: 'tuple',
-          components: [
-            { name: 'currency', type: 'address' },
-            { name: 'tokensRecipient', type: 'address' },
-            { name: 'fundsRecipient', type: 'address' },
-            { name: 'startBlock', type: 'uint64' },
-            { name: 'endBlock', type: 'uint64' },
-            { name: 'claimBlock', type: 'uint64' },
-            { name: 'tickSpacing', type: 'uint256' },
-            { name: 'validationHook', type: 'address' },
-            { name: 'floorPrice', type: 'uint256' },
-            { name: 'requiredCurrencyRaised', type: 'uint128' },
-            { name: 'auctionStepsData', type: 'bytes' },
-          ],
-        },
-      ],
-      event.args.configData,
-    );
-    currency = params.currency;
-    validationHook = params.validationHook;
-    startBlock = Number(params.startBlock);
-    endBlock = Number(params.endBlock);
-    claimBlock = Number(params.claimBlock);
-    floorPrice = params.floorPrice;
-    tickSpacing = params.tickSpacing;
-  } catch {
-    // configData decode failed — will be populated from contract reads in setup
-  }
+  const [params] = decodeAbiParameters(CONFIG_COMPONENTS, event.args.configData);
+  const currency = params.currency;
+  const validationHook = params.validationHook;
+  const startBlock = Number(params.startBlock);
+  const endBlock = Number(params.endBlock);
+  const claimBlock = Number(params.claimBlock);
+  const floorPrice = params.floorPrice;
+  const tickSpacing = params.tickSpacing;
 
   await context.db.insert(schema.auction).values({
     id: addr,
@@ -92,6 +93,17 @@ ponder.on('AuctionFactory:AuctionCreated', async ({ event, context }) => {
     numBidders: 0,
     totalBidAmount: 0n,
     updatedAt: Math.floor(Date.now() / 1000),
+  }).onConflictDoUpdate({
+    token: event.args.token,
+    currency,
+    amount: event.args.amount,
+    startBlock,
+    endBlock,
+    claimBlock,
+    floorPrice,
+    tickSpacing,
+    validationHook,
+    createdAt: Number(event.block.number),
   });
 
   // Also read totalSupply from contract (set after onTokensReceived)
@@ -109,56 +121,23 @@ ponder.on('AuctionFactory:AuctionCreated', async ({ event, context }) => {
   console.timeEnd(`AuctionFactory:AuctionCreated-${addr}`);
 });
 
-// Helper: ensure auction row has contract state populated
-async function ensureAuctionInitialized(auctionId: string, context: any) {
+// Returns false if auction is not tracked (not our deployer). Callers should early-return.
+async function ensureAuctionInitialized(auctionId: string, context: any): Promise<boolean> {
   const existing = await context.db.find(schema.auction, { id: auctionId });
-  if (existing && existing.totalSupply > 0n) return;
+  if (!existing) return false;
+  if (existing.totalSupply > 0n) return true;
 
   const ac = auctionContract(auctionId);
-  const [startBlock, endBlock, claimBlock, floorPrice, totalSupply, tickSpacing] = await Promise.all([
-    context.client.readContract({ ...ac, functionName: 'startBlock' }),
-    context.client.readContract({ ...ac, functionName: 'endBlock' }),
-    context.client.readContract({ ...ac, functionName: 'claimBlock' }),
-    context.client.readContract({ ...ac, functionName: 'floorPrice' }),
-    context.client.readContract({ ...ac, functionName: 'totalSupply' }),
-    context.client.readContract({ ...ac, functionName: 'tickSpacing' }),
-  ]);
+  try {
+    const [startBlock, endBlock, claimBlock, floorPrice, totalSupply, tickSpacing] = await Promise.all([
+      context.client.readContract({ ...ac, functionName: 'startBlock' }),
+      context.client.readContract({ ...ac, functionName: 'endBlock' }),
+      context.client.readContract({ ...ac, functionName: 'claimBlock' }),
+      context.client.readContract({ ...ac, functionName: 'floorPrice' }),
+      context.client.readContract({ ...ac, functionName: 'totalSupply' }),
+      context.client.readContract({ ...ac, functionName: 'tickSpacing' }),
+    ]);
 
-  if (!existing) {
-    let token = '0x0000000000000000000000000000000000000000' as `0x${string}`;
-    try {
-      token = await context.client.readContract({ ...ac, functionName: 'token' });
-    } catch {}
-    await context.db.insert(schema.auction).values({
-      id: auctionId,
-      token,
-      currency: '0x0000000000000000000000000000000000000000',
-      amount: 0n,
-      startBlock: Number(startBlock),
-      endBlock: Number(endBlock),
-      claimBlock: Number(claimBlock),
-      totalSupply,
-      floorPrice,
-      tickSpacing,
-      validationHook: '0x0000000000000000000000000000000000000000',
-      createdAt: 0,
-      lastCheckpointedBlock: 0,
-      lastClearingPriceQ96: 0n,
-      currencyRaised: 0n,
-      totalCleared: 0n,
-      requiredCurrencyRaised: 0n,
-      cumulativeMps: 0,
-      remainingMps: 0n,
-      availableSupply: 0n,
-      currentStepMps: 0,
-      currentStepStartBlock: 0,
-      currentStepEndBlock: 0,
-      numBids: 0,
-      numBidders: 0,
-      totalBidAmount: 0n,
-      updatedAt: Math.floor(Date.now() / 1000),
-    }).onConflictDoNothing();
-  } else {
     await context.db.update(schema.auction, { id: auctionId }).set({
       startBlock: Number(startBlock),
       endBlock: Number(endBlock),
@@ -167,45 +146,47 @@ async function ensureAuctionInitialized(auctionId: string, context: any) {
       totalSupply,
       tickSpacing,
     });
+
+    const pointer = await context.client.readContract({ ...ac, functionName: 'pointer' });
+    const code = await context.client.getCode({ address: pointer });
+    if (code) {
+      const data = code.slice(4);
+      const steps: { mps: number; startBlock: number; endBlock: number }[] = [];
+      let stepStart = Number(startBlock);
+      for (let i = 0; i < data.length; i += 16) {
+        const chunk = data.slice(i, i + 16);
+        if (chunk.length < 16) break;
+        const mps = parseInt(chunk.slice(0, 6), 16);
+        const blockDelta = parseInt(chunk.slice(6), 16);
+        const stepEnd = stepStart + blockDelta;
+        steps.push({ mps, startBlock: stepStart, endBlock: stepEnd });
+        stepStart = stepEnd;
+      }
+      if (steps.length > 0) {
+        await context.db.insert(schema.step).values(
+          steps.map((s, idx) => ({
+            id: `${auctionId}:${idx}`,
+            auctionId,
+            startBlock: s.startBlock,
+            endBlock: s.endBlock,
+            mps: s.mps,
+          })),
+        );
+      }
+    }
+  } catch (e) {
+    console.warn(`[ensureAuctionInitialized] RPC read failed for ${auctionId}:`, (e as Error).message?.slice(0, 120));
   }
 
-  // Parse auction steps from SSTORE2
-  const pointer = await context.client.readContract({ ...ac, functionName: 'pointer' });
-  const code = await context.client.getCode({ address: pointer });
-  if (code) {
-    const data = code.slice(4); // slice off "0x00"
-    const steps: { mps: number; startBlock: number; endBlock: number }[] = [];
-    let stepStart = Number(startBlock);
-    for (let i = 0; i < data.length; i += 16) {
-      const chunk = data.slice(i, i + 16);
-      if (chunk.length < 16) break;
-      const mps = parseInt(chunk.slice(0, 6), 16);
-      const blockDelta = parseInt(chunk.slice(6), 16);
-      const stepEnd = stepStart + blockDelta;
-      steps.push({ mps, startBlock: stepStart, endBlock: stepEnd });
-      stepStart = stepEnd;
-    }
-
-    if (steps.length > 0) {
-      await context.db.insert(schema.step).values(
-        steps.map((s, idx) => ({
-          id: `${auctionId}:${idx}`,
-          auctionId,
-          startBlock: s.startBlock,
-          endBlock: s.endBlock,
-          mps: s.mps,
-        })),
-      );
-    }
-  }
+  return true;
 }
 
 // ---- Auction events (scoped per auction via event.log.address) ----
 
 ponder.on('Auction:AuctionStepRecorded', async ({ event, context }) => {
   const id = auctionAddr(event);
+  if (!(await ensureAuctionInitialized(id, context))) return;
   console.time(`AuctionStepRecorded-${id}-${event.block.number}`);
-  await ensureAuctionInitialized(id, context);
 
   await context.db.update(schema.auction, { id }).set({
     currentStepMps: event.args.mps,
@@ -218,8 +199,8 @@ ponder.on('Auction:AuctionStepRecorded', async ({ event, context }) => {
 
 ponder.on('Auction:TickInitialized', async ({ event, context }) => {
   const id = auctionAddr(event);
+  if (!(await ensureAuctionInitialized(id, context))) return;
   console.time(`TickInitialized-${id}-${event.block.number}`);
-  await ensureAuctionInitialized(id, context);
 
   await context.db.insert(schema.tick).values({
     id: `${id}:${BigInt(event.args.price).toString()}`,
@@ -234,8 +215,8 @@ ponder.on('Auction:TickInitialized', async ({ event, context }) => {
 
 ponder.on('Auction:BidSubmitted', async ({ event, context }) => {
   const id = auctionAddr(event);
+  if (!(await ensureAuctionInitialized(id, context))) return;
   console.time(`BidSubmitted-${id}-${event.block.number}`);
-  await ensureAuctionInitialized(id, context);
   const ac = auctionContract(id);
 
   const bidId = `${id}:${BigInt(event.args.id).toString()}`;
@@ -314,8 +295,8 @@ ponder.on('Auction:BidSubmitted', async ({ event, context }) => {
 
 ponder.on('Auction:CheckpointUpdated', async ({ event, context }) => {
   const id = auctionAddr(event);
+  if (!(await ensureAuctionInitialized(id, context))) return;
   console.time(`CheckpointUpdated-${id}-${event.block.number}`);
-  await ensureAuctionInitialized(id, context);
   const ac = auctionContract(id);
 
   const checkPointFromRPC = await context.client.readContract({
@@ -517,6 +498,8 @@ ponder.on('Auction:CheckpointUpdated', async ({ event, context }) => {
 
 ponder.on('Auction:BidExited', async ({ event, context }) => {
   const id = auctionAddr(event);
+  const auction = await context.db.find(schema.auction, { id });
+  if (!auction) return;
   console.time(`BidExited-${id}-${event.block.number}`);
 
   const bidId = `${id}:${event.args.bidId.toString()}`;
@@ -540,6 +523,8 @@ ponder.on('Auction:BidExited', async ({ event, context }) => {
 
 ponder.on('Auction:TokensClaimed', async ({ event, context }) => {
   const id = auctionAddr(event);
+  const auction = await context.db.find(schema.auction, { id });
+  if (!auction) return;
   console.time(`TokensClaimed-${id}-${event.block.number}`);
 
   const bidId = `${id}:${BigInt(event.args.bidId).toString()}`;

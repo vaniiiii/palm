@@ -27,6 +27,7 @@ services:
       - FACTORY_ADDRESS=${ANVIL_FACTORY_ADDRESS}
       - CHAIN_ID=${ANVIL_CHAIN_ID}
       - START_BLOCK=${ANVIL_START_BLOCK:-0}
+      - DEPLOYER_ADDRESS=${DEPLOYER_ADDRESS:-}
       - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder_anvil
       - DATABASE_SCHEMA=public
     expose:
@@ -44,6 +45,7 @@ services:
       - FACTORY_ADDRESS=${BASE_FACTORY_ADDRESS}
       - CHAIN_ID=${BASE_CHAIN_ID}
       - START_BLOCK=${BASE_START_BLOCK:-0}
+      - DEPLOYER_ADDRESS=${DEPLOYER_ADDRESS:-}
       - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder_base
       - DATABASE_SCHEMA=public
     expose:
@@ -61,6 +63,7 @@ services:
       - FACTORY_ADDRESS=${ARB_FACTORY_ADDRESS}
       - CHAIN_ID=${ARB_CHAIN_ID}
       - START_BLOCK=${ARB_START_BLOCK:-0}
+      - DEPLOYER_ADDRESS=${DEPLOYER_ADDRESS:-}
       - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder_arb
       - DATABASE_SCHEMA=public
     expose:
