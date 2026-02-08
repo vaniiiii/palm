@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+KYC_MODE="${ENABLE_KYC:-false}"
+echo "Mode: KYC=$KYC_MODE"
+
 echo "Stopping all containers..."
 docker compose --profile anvil down -v
 
@@ -13,7 +16,7 @@ echo "Waiting for anvil..."
 sleep 3
 
 echo "Deploying contracts..."
-OUTPUT=$(./deploy-contracts.sh)
+OUTPUT=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh)
 echo "$OUTPUT"
 
 FACTORY=$(echo "$OUTPUT" | grep "FACTORY_ADDRESS=" | cut -d= -f2)
@@ -31,7 +34,7 @@ echo "Starting indexer..."
 docker compose --profile anvil up -d indexer
 
 echo ""
-echo "Done. Addresses:"
+echo "Done. KYC=$KYC_MODE"
 echo "  FACTORY=$FACTORY"
 echo "  AUCTION=$AUCTION"
 echo "  HOOK=$HOOK"
