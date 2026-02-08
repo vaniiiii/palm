@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { parseUnits, encodeAbiParameters, type Address } from "viem";
-import { toQ96 } from "../utils/formatting";
+import { toQ96, toQ96Aligned } from "../utils/formatting";
 
 // Factory ABI (minimal)
 const FACTORY_ABI = [
@@ -166,8 +166,8 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
     if (!tokenAmount || !floorPrice || !durationBlocks) return null;
 
     const amount = parseUnits(tokenAmount, tokenDecimals);
-    const floorPriceQ96 = toQ96(parseFloat(floorPrice));
     const tickSpacingQ96 = toQ96(parseFloat(tickSpacing));
+    const floorPriceQ96 = toQ96Aligned({ value: parseFloat(floorPrice), tickSpacing: tickSpacingQ96 });
     const duration = parseInt(durationBlocks);
 
     // MPS calculation: total 10,000,000 over duration
