@@ -5,3 +5,7 @@
 {$INDEXER_DOMAIN} {
 	reverse_proxy indexer:42069
 }
+
+{$RPC_DOMAIN} {
+	reverse_proxy anvil:8545
+}
