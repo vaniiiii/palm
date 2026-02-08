@@ -27,7 +27,7 @@ export const CHAIN_CONFIG: Record<number, ChainConfig> = {
   },
   [anvil.id]: {
     factory: (import.meta.env.VITE_FACTORY_ADDRESS || CCA_FACTORY) as `0x${string}`,
-    indexerUrl: indexerUrl(import.meta.env.VITE_INDEXER_URL, "/indexer/graphql"),
+    indexerUrl: indexerUrl(import.meta.env.VITE_ANVIL_INDEXER_URL || import.meta.env.VITE_INDEXER_URL, "/indexer/graphql"),
   },
 };
 

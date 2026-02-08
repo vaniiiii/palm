@@ -74,7 +74,9 @@ echo "Generating Caddyfile..."
 generate_caddyfile > Caddyfile
 
 echo "Stopping all containers..."
-docker compose --profile anvil --profile base --profile arbitrum down -v
+docker compose --profile anvil --profile base --profile arbitrum down
+# Remove only pgdata — preserve caddy_data so SSL certs survive resets
+docker volume rm deploy_pgdata 2>/dev/null || true
 
 # Clear anvil addresses — fresh anvil has no contracts from previous runs
 if [[ "$USE_ANVIL" == true ]]; then
