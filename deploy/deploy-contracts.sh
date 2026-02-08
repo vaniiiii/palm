@@ -52,15 +52,18 @@ if [[ -z "$FACTORY" ]]; then
     exit 1
 fi
 
-RPC_FLAG="--rpc-url"
-[[ "$CHAIN" != "anvil" ]] && RPC_FLAG="--fork-url"
+EXTRA_FLAGS=()
+if [[ "$CHAIN" != "anvil" ]]; then
+    EXTRA_FLAGS+=(--skip-simulation)
+fi
 
 echo "Deploying Palm contracts on $CHAIN..."
 DEPLOY_OUTPUT=$(cd "$PALM_DIR/packages/contracts" && \
     FACTORY="$FACTORY" PRIVATE_KEY="$PRIVATE_KEY" ENABLE_KYC="${ENABLE_KYC:-false}" \
     forge script script/Deploy.s.sol:Deploy \
-        "$RPC_FLAG" "$RPC_URL" \
+        --rpc-url "$RPC_URL" \
         --broadcast \
+        "${EXTRA_FLAGS[@]}" \
         -v 2>&1)
 
 AUCTION=$(echo "$DEPLOY_OUTPUT" | grep -oE 'AUCTION=[^ ]+' | cut -d= -f2 | head -1)
