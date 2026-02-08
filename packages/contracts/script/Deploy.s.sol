@@ -156,7 +156,9 @@ contract Deploy is Script {
 
         // Mock ArbSys precompile for forge simulation (real Arbitrum has it natively)
         if (address(0x64).code.length == 0) {
+            vm.stopBroadcast();
             vm.etch(address(0x64), type(MockArbSys).runtimeCode);
+            vm.startBroadcast(deployerKey);
         }
 
         // N+6: Create auction via factory
