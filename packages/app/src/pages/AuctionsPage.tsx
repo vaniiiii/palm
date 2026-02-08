@@ -1,6 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { formatEther } from "viem";
-import { useBlockNumber, useChainId } from "wagmi";
+import { useBlockNumber } from "wagmi";
+import { getBlockNumber } from "@wagmi/core";
+import { config } from "../wagmi";
 
 import { useAllAuctions, type IndexedAuction } from "../hooks/useIndexer";
 import { SUPPORTED_CHAIN_IDS, getChainName } from "../config/chains";
@@ -41,14 +43,28 @@ export default function AuctionsPage({
   const [filter, setFilter] = useState<FilterTab>("active");
   const [chainFilter, setChainFilter] = useState<number | null>(null);
 
-  const connectedChainId = useChainId();
-  const { data: currentBlock } = useBlockNumber({ watch: true });
+  const chainIds = useMemo(() => [...new Set(auctions.map(a => a.chainId))], [auctions]);
+  const [blockByChain, setBlockByChain] = useState<Record<number, number>>({});
 
-  const blockByChain: Record<number, number> = useMemo(() => {
-    const m: Record<number, number> = {};
-    if (currentBlock) m[connectedChainId] = Number(currentBlock);
-    return m;
-  }, [currentBlock, connectedChainId]);
+  useEffect(() => {
+    if (chainIds.length === 0) return;
+    const fetchBlocks = async () => {
+      const results = await Promise.allSettled(
+        chainIds.map(async (id) => {
+          const block = await getBlockNumber(config, { chainId: id as any });
+          return [id, Number(block)] as const;
+        })
+      );
+      const m: Record<number, number> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled") m[r.value[0]] = r.value[1];
+      }
+      setBlockByChain(m);
+    };
+    fetchBlocks();
+    const interval = setInterval(fetchBlocks, 12000);
+    return () => clearInterval(interval);
+  }, [chainIds]);
 
   const filtered = useMemo(() => {
     if (chainFilter === null) return auctions;
