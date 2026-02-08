@@ -32,7 +32,7 @@ export function AuctionDashboard({
 }: AuctionDashboardProps) {
   const [bottomTab, setBottomTab] = useState<BottomTab>("activity");
   const { auction, bids, checkpoints, loading, error, refetch } = useAuctionDetail(auctionAddress, auctionChainId);
-  const { data: currentBlock } = useBlockNumber({ watch: true });
+  const { data: currentBlock } = useBlockNumber({ chainId: auctionChainId, watch: true });
   const { address } = useAccount();
   const { isVerified, hookData: cachedHookData, provider: cachedProvider, clearKYC } = useKYCCache(address);
 
