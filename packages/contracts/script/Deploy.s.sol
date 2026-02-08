@@ -154,8 +154,8 @@ contract Deploy is Script {
         // N+5: Approve factory to pull tokens
         token.approve(factory, TOTAL_SUPPLY);
 
-        // Mock ArbSys precompile for forge simulation (real Arbitrum has it natively)
-        if (address(0x64).code.length == 0) {
+        // Forge can't execute Arbitrum's ArbSys precompile — etch a mock for simulation
+        if (block.chainid == 42161) {
             vm.stopBroadcast();
             vm.etch(address(0x64), type(MockArbSys).runtimeCode);
             vm.startBroadcast(deployerKey);
