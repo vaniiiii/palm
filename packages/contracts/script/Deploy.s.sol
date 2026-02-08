@@ -41,6 +41,12 @@ interface IDistributionContract {
     function onTokensReceived() external;
 }
 
+contract MockArbSys {
+    function arbBlockNumber() external view returns (uint256) {
+        return block.number;
+    }
+}
+
 contract Deploy is Script {
     // Auction config
     uint256 constant TOTAL_SUPPLY = 1_000_000e18;
@@ -147,6 +153,11 @@ contract Deploy is Script {
 
         // N+5: Approve factory to pull tokens
         token.approve(factory, TOTAL_SUPPLY);
+
+        // Mock ArbSys precompile for forge simulation (real Arbitrum has it natively)
+        if (address(0x64).code.length == 0) {
+            vm.etch(address(0x64), type(MockArbSys).runtimeCode);
+        }
 
         // N+6: Create auction via factory
         address auction = ICCAFactory(factory).initializeDistribution(
