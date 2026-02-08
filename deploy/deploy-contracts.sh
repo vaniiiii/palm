@@ -2,7 +2,10 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+
+_ENABLE_KYC="${ENABLE_KYC:-}"
 source .env
+[[ -n "$_ENABLE_KYC" ]] && ENABLE_KYC="$_ENABLE_KYC"
 
 CHAIN="${1:-anvil}"
 PALM_DIR="${PALM_DIR:-/opt/palm}"
