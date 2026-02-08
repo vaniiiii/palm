@@ -41,7 +41,7 @@ generate_caddyfile() {
 	respond @options 204
 }
 
-{$API_DOMAIN} {
+http://{$API_DOMAIN} {
 	import cors
 	reverse_proxy prover:3001
 }
@@ -50,12 +50,12 @@ EOF
     if [[ "$USE_ANVIL" == true ]]; then
         cat <<'EOF'
 
-{$ANVIL_INDEXER_DOMAIN} {
+http://{$ANVIL_INDEXER_DOMAIN} {
 	import cors
 	reverse_proxy indexer:42069
 }
 
-{$ANVIL_RPC_DOMAIN} {
+http://{$ANVIL_RPC_DOMAIN} {
 	import cors
 	reverse_proxy anvil:8545
 }
@@ -65,7 +65,7 @@ EOF
     if [[ "$USE_BASE" == true ]]; then
         cat <<'EOF'
 
-{$BASE_INDEXER_DOMAIN} {
+http://{$BASE_INDEXER_DOMAIN} {
 	import cors
 	reverse_proxy indexer-base:42069
 }
@@ -75,7 +75,7 @@ EOF
     if [[ "$USE_ARB" == true ]]; then
         cat <<'EOF'
 
-{$ARB_INDEXER_DOMAIN} {
+http://{$ARB_INDEXER_DOMAIN} {
 	import cors
 	reverse_proxy indexer-arb:42069
 }
