@@ -64,11 +64,17 @@ DEPLOY_OUTPUT=$(cd "$PALM_DIR/packages/contracts" && \
         --rpc-url "$RPC_URL" \
         --broadcast \
         "${EXTRA_FLAGS[@]}" \
-        -v 2>&1)
+        -v 2>&1) || true
 
 AUCTION=$(echo "$DEPLOY_OUTPUT" | grep -oE 'AUCTION=[^ ]+' | cut -d= -f2 | head -1)
 HOOK=$(echo "$DEPLOY_OUTPUT" | grep -oE 'HOOK=[^ ]+' | cut -d= -f2 | head -1)
 TOKEN=$(echo "$DEPLOY_OUTPUT" | grep -oE 'TOKEN=[^ ]+' | cut -d= -f2 | head -1)
+
+if [[ -z "$AUCTION" ]]; then
+    echo "ERROR: Deploy failed on $CHAIN. Forge output:"
+    echo "$DEPLOY_OUTPUT"
+    exit 1
+fi
 
 echo ""
 echo "Deployed on $CHAIN:"
