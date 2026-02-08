@@ -112,7 +112,7 @@ ponder.on('AuctionFactory:AuctionCreated', async ({ event, context }) => {
 // Helper: ensure auction row has contract state populated
 async function ensureAuctionInitialized(auctionId: string, context: any) {
   const existing = await context.db.find(schema.auction, { id: auctionId });
-  if (!existing || existing.totalSupply > 0n) return; // already initialized
+  if (existing && existing.totalSupply > 0n) return;
 
   const ac = auctionContract(auctionId);
   const [startBlock, endBlock, claimBlock, floorPrice, totalSupply, tickSpacing] = await Promise.all([
@@ -124,14 +124,50 @@ async function ensureAuctionInitialized(auctionId: string, context: any) {
     context.client.readContract({ ...ac, functionName: 'tickSpacing' }),
   ]);
 
-  await context.db.update(schema.auction, { id: auctionId }).set({
-    startBlock: Number(startBlock),
-    endBlock: Number(endBlock),
-    claimBlock: Number(claimBlock),
-    floorPrice,
-    totalSupply,
-    tickSpacing,
-  });
+  if (!existing) {
+    let token = '0x0000000000000000000000000000000000000000' as `0x${string}`;
+    try {
+      token = await context.client.readContract({ ...ac, functionName: 'token' });
+    } catch {}
+    await context.db.insert(schema.auction).values({
+      id: auctionId,
+      token,
+      currency: '0x0000000000000000000000000000000000000000',
+      amount: 0n,
+      startBlock: Number(startBlock),
+      endBlock: Number(endBlock),
+      claimBlock: Number(claimBlock),
+      totalSupply,
+      floorPrice,
+      tickSpacing,
+      validationHook: '0x0000000000000000000000000000000000000000',
+      createdAt: 0,
+      lastCheckpointedBlock: 0,
+      lastClearingPriceQ96: 0n,
+      currencyRaised: 0n,
+      totalCleared: 0n,
+      requiredCurrencyRaised: 0n,
+      cumulativeMps: 0,
+      remainingMps: 0n,
+      availableSupply: 0n,
+      currentStepMps: 0,
+      currentStepStartBlock: 0,
+      currentStepEndBlock: 0,
+      numBids: 0,
+      numBidders: 0,
+      totalBidAmount: 0n,
+      updatedAt: Math.floor(Date.now() / 1000),
+    }).onConflictDoNothing();
+  } else {
+    await context.db.update(schema.auction, { id: auctionId }).set({
+      startBlock: Number(startBlock),
+      endBlock: Number(endBlock),
+      claimBlock: Number(claimBlock),
+      floorPrice,
+      totalSupply,
+      tickSpacing,
+    });
+  }
 
   // Parse auction steps from SSTORE2
   const pointer = await context.client.readContract({ ...ac, functionName: 'pointer' });
