@@ -10,6 +10,7 @@
 
 import { execSync } from "child_process";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 const snarkjs = require("snarkjs");
@@ -127,7 +128,7 @@ const server = Bun.serve({
           );
         }
 
-        const tmpDir = path.join(BUILD_DIR, "tmp");
+        const tmpDir = path.join(os.tmpdir(), "palm-prove");
         fs.mkdirSync(tmpDir, { recursive: true });
         const wtnsPath = path.join(tmpDir, `${provider}-${Date.now()}.wtns`);
         await snarkjs.wtns.calculate(circuitInputs, wasmPath, wtnsPath);
