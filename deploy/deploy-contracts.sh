@@ -52,11 +52,14 @@ if [[ -z "$FACTORY" ]]; then
     exit 1
 fi
 
+RPC_FLAG="--rpc-url"
+[[ "$CHAIN" != "anvil" ]] && RPC_FLAG="--fork-url"
+
 echo "Deploying Palm contracts on $CHAIN..."
 DEPLOY_OUTPUT=$(cd "$PALM_DIR/packages/contracts" && \
     FACTORY="$FACTORY" PRIVATE_KEY="$PRIVATE_KEY" ENABLE_KYC="${ENABLE_KYC:-false}" \
     forge script script/Deploy.s.sol:Deploy \
-        --rpc-url "$RPC_URL" \
+        "$RPC_FLAG" "$RPC_URL" \
         --broadcast \
         -v 2>&1)
 
