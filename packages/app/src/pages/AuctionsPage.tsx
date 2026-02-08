@@ -5,24 +5,25 @@ import { useBlockNumber } from "wagmi";
 import { useAuctions, type IndexedAuction } from "../hooks/useIndexer";
 import { requiresKYC } from "../utils/auction";
 import { fromQ96 } from "../utils/formatting";
+import { getTokenMeta } from "../utils/tokens";
 
-const formatFDV = (price: number, supply: bigint): string => {
+const formatFDV = (price: number, supply: bigint, symbol: string): string => {
   const fdv = price * Number(formatEther(supply));
   if (fdv === 0) return "—";
-  if (fdv < 0.01) return `${fdv.toFixed(4)} ETH`;
-  if (fdv < 1) return `${fdv.toFixed(3)} ETH`;
-  if (fdv < 1000) return `${fdv.toFixed(1)} ETH`;
-  if (fdv < 1000000) return `${(fdv / 1000).toFixed(1)}K ETH`;
-  return `${(fdv / 1000000).toFixed(1)}M ETH`;
+  if (fdv < 0.01) return `${fdv.toFixed(4)} ${symbol}`;
+  if (fdv < 1) return `${fdv.toFixed(3)} ${symbol}`;
+  if (fdv < 1000) return `${fdv.toFixed(1)} ${symbol}`;
+  if (fdv < 1000000) return `${(fdv / 1000).toFixed(1)}K ${symbol}`;
+  return `${(fdv / 1000000).toFixed(1)}M ${symbol}`;
 };
 
-const formatVolume = (value: bigint): string => {
+const formatVolume = (value: bigint, symbol: string): string => {
   const num = Number(formatEther(value));
-  if (num === 0) return "0 ETH";
-  if (num < 0.01) return `${num.toFixed(4)} ETH`;
-  if (num < 1) return `${num.toFixed(3)} ETH`;
-  if (num < 1000) return `${num.toFixed(2)} ETH`;
-  return `${(num / 1000).toFixed(1)}K ETH`;
+  if (num === 0) return `0 ${symbol}`;
+  if (num < 0.01) return `${num.toFixed(4)} ${symbol}`;
+  if (num < 1) return `${num.toFixed(3)} ${symbol}`;
+  if (num < 1000) return `${num.toFixed(2)} ${symbol}`;
+  return `${(num / 1000).toFixed(1)}K ${symbol}`;
 };
 
 type FilterTab = "active" | "upcoming" | "completed";
@@ -196,6 +197,7 @@ function AuctionRow({
   const clearingPrice = fromQ96(auction.lastClearingPriceQ96);
   const totalSupply = BigInt(auction.totalSupply || "0");
   const committed = BigInt(auction.currencyRaised || "0");
+  const currencySymbol = getTokenMeta(auction.currency).symbol;
 
   const timeInfo = useMemo(() => {
     if (!currentBlock || auction.startBlock === 0 || auction.endBlock === 0) {
@@ -269,11 +271,11 @@ function AuctionRow({
       </div>
 
       <div className="col-span-2 text-right text-palm-text text-sm">
-        {formatFDV(clearingPrice, totalSupply)}
+        {formatFDV(clearingPrice, totalSupply, currencySymbol)}
       </div>
 
       <div className="col-span-2 text-right text-palm-text text-sm">
-        {formatVolume(committed)}
+        {formatVolume(committed, currencySymbol)}
       </div>
 
       <div className="col-span-3 flex flex-col items-end gap-1">
@@ -320,6 +322,7 @@ function AuctionCard({
   const clearingPrice = fromQ96(auction.lastClearingPriceQ96);
   const totalSupply = BigInt(auction.totalSupply || "0");
   const committed = BigInt(auction.currencyRaised || "0");
+  const currencySymbol = getTokenMeta(auction.currency).symbol;
 
   const timeInfo = useMemo(() => {
     if (!currentBlock || auction.startBlock === 0 || auction.endBlock === 0) {
@@ -418,11 +421,11 @@ function AuctionCard({
       <div className="flex items-center justify-between text-sm">
         <div>
           <div className="text-palm-text-3 text-[10px] uppercase">FDV</div>
-          <div className="text-palm-text">{formatFDV(clearingPrice, totalSupply)}</div>
+          <div className="text-palm-text">{formatFDV(clearingPrice, totalSupply, currencySymbol)}</div>
         </div>
         <div className="text-right">
           <div className="text-palm-text-3 text-[10px] uppercase">Committed</div>
-          <div className="text-palm-text">{formatVolume(committed)}</div>
+          <div className="text-palm-text">{formatVolume(committed, currencySymbol)}</div>
         </div>
       </div>
     </div>

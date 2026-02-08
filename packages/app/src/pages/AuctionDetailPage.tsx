@@ -158,9 +158,7 @@ export default function AuctionDetailPage({
                   : "border-palm-border text-palm-text-3 bg-palm-bg-secondary"
               }`}
             >
-              <span
-                className={`w-1.5 h-1.5 ${enabled ? "bg-palm-green" : "bg-palm-text-3"}`}
-              />
+              <img src={p.logo} alt={p.name} className="w-4 h-4 object-contain" />
               {p.name}
             </div>
           );
@@ -370,7 +368,12 @@ function ProviderManager({ hookAddress }: { hookAddress: Address }) {
                 key={p.id}
                 className="border-b border-palm-border/20 hover:bg-palm-bg-secondary/30 transition-colors"
               >
-                <td className="py-3 text-sm text-palm-text">{p.name}</td>
+                <td className="py-3 text-sm text-palm-text">
+                  <span className="flex items-center gap-2">
+                    <img src={p.logo} alt={p.name} className="w-4 h-4 object-contain" />
+                    {p.name}
+                  </span>
+                </td>
                 <td className="py-3 text-xs text-palm-text-2 font-mono">
                   {p.domain}
                 </td>
@@ -505,7 +508,10 @@ function ProviderSelector({
             }`}
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-palm-text font-medium">{p.name}</span>
+              <span className="flex items-center gap-2 text-palm-text font-medium">
+                <img src={p.logo} alt={p.name} className="w-5 h-5 object-contain" />
+                {p.name}
+              </span>
               {p.enabled ? (
                 <span className="text-palm-green text-[10px] font-medium uppercase tracking-wider">
                   Available

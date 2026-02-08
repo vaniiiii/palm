@@ -4,6 +4,7 @@ import { formatEther } from "viem";
 import type { IndexedAuction } from "../../hooks/useIndexer";
 import { getAuctionPhase, PHASE_CONFIGS } from "../../utils/auction";
 import { formatLargeNumber, formatPrice, fromQ96, shortenAddress } from "../../utils/formatting";
+import { getTokenMeta } from "../../utils/tokens";
 
 interface AuctionStatsProps {
   auction: IndexedAuction;
@@ -11,6 +12,8 @@ interface AuctionStatsProps {
 }
 
 export function AuctionStats({ auction, currentBlock }: AuctionStatsProps) {
+  const currencySymbol = getTokenMeta(auction.currency).symbol;
+
   const stats = useMemo(() => {
     const floorPrice = fromQ96(auction.floorPrice);
     const clearingPrice = fromQ96(auction.lastClearingPriceQ96);
@@ -112,7 +115,7 @@ export function AuctionStats({ auction, currentBlock }: AuctionStatsProps) {
         />
         <StatTile
           label="Implied FDV"
-          value={`${formatPrice(stats.impliedFDV)} ETH`}
+          value={`${formatPrice(stats.impliedFDV)} ${currencySymbol}`}
           sub="fully diluted"
         />
         <StatTile
@@ -126,7 +129,7 @@ export function AuctionStats({ auction, currentBlock }: AuctionStatsProps) {
         <StatTile
           label="Raised"
           value={`${parseFloat(stats.currencyRaised).toFixed(2)}`}
-          sub="ETH"
+          sub={currencySymbol}
           accent="green"
         />
         <StatTile

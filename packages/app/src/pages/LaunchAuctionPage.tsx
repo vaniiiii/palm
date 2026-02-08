@@ -479,19 +479,22 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
                   KYC Providers
                 </label>
                 <div className="flex gap-2">
-                  {(["echo", "legion", "both"] as const).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setKycProvider(p)}
-                      className={`px-4 py-2 text-xs font-medium border transition-colors ${
-                        kycProvider === p
-                          ? "border-palm-cyan text-palm-cyan bg-palm-cyan/10"
-                          : "border-palm-border text-palm-text-3 hover:border-palm-text-3"
-                      }`}
-                    >
-                      {p === "both" ? "Both" : p.charAt(0).toUpperCase() + p.slice(1)}
-                    </button>
-                  ))}
+                  {(["echo", "legion", "both"] as const).map((p) => {
+                    const label = p === "both" ? "Both" : p === "echo" ? "Echo Sonar" : "Veriff";
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => setKycProvider(p)}
+                        className={`px-4 py-2 text-xs font-medium border transition-colors ${
+                          kycProvider === p
+                            ? "border-palm-cyan text-palm-cyan bg-palm-cyan/10"
+                            : "border-palm-border text-palm-text-3 hover:border-palm-text-3"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

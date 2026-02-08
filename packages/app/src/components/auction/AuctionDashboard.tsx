@@ -6,6 +6,7 @@ import { useAuctionDetail } from "../../hooks/useIndexer.js";
 import { useKYCCache } from "../../hooks/useKYCCache.js";
 import { getAuctionPhase, PHASE_CONFIGS, requiresKYC } from "../../utils/auction.js";
 import { fromQ96, formatPrice, formatLargeNumber } from "../../utils/formatting.js";
+import { getTokenMeta } from "../../utils/tokens.js";
 import { BidActivity } from "./BidActivity.js";
 import { BidDistributionChart } from "./BidDistributionChart.js";
 import { BidForm } from "./BidForm.js";
@@ -170,7 +171,7 @@ export function AuctionDashboard({
         <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-palm-border mb-6">
           <MetricTile label="Floor" value={formatPrice(stats.floorPrice)} />
           <MetricTile label="Clearing" value={formatPrice(stats.clearingPrice)} accent="cyan" />
-          <MetricTile label="Raised" value={`${parseFloat(stats.currencyRaised).toFixed(3)} ETH`} accent="green" />
+          <MetricTile label="Raised" value={`${parseFloat(stats.currencyRaised).toFixed(3)} ${getTokenMeta(auction.currency).symbol}`} accent="green" />
           <MetricTile label="Bids" value={stats.numBids.toString()} sub={`${stats.numBidders} bidders`} />
           <MetricTile
             label="Progress"

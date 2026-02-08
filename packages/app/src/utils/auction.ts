@@ -40,9 +40,9 @@ export type ProviderType = (typeof PROVIDERS)[keyof typeof PROVIDERS];
 export function getProviderName(provider: number): string {
   switch (provider) {
     case PROVIDERS.ECHO:
-      return "Echo";
+      return "Echo Sonar";
     case PROVIDERS.LEGION:
-      return "Legion";
+      return "Veriff";
     default:
       return `Provider #${provider}`;
   }
