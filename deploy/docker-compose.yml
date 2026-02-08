@@ -47,6 +47,7 @@ services:
     environment:
       - API_DOMAIN=${API_DOMAIN}
       - INDEXER_DOMAIN=${INDEXER_DOMAIN}
+      - RPC_DOMAIN=${RPC_DOMAIN}
     ports:
       - "80:80"
       - "443:443"
