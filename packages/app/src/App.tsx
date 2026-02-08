@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
 import { type Address } from "viem";
+import { setLiFiWalletClient } from "./config/lifi";
 import Layout from "./components/Layout";
 import LandingPage from "./pages/LandingPage";
 import AuctionsPage from "./pages/AuctionsPage";
@@ -13,8 +14,10 @@ type View = "landing" | "auctions" | "auction-detail" | "auction-kyc" | "launch"
 
 export default function App() {
   const { isConnected } = useAccount();
+  const { data: walletClient } = useWalletClient();
+  useEffect(() => { setLiFiWalletClient(walletClient ?? null); }, [walletClient]);
   const [view, setView] = useState<View>("landing");
-  const [selectedAuction, setSelectedAuction] = useState<string | null>(null);
+  const [selectedAuction, setSelectedAuction] = useState<{ address: string; chainId: number } | null>(null);
   const [selectedHook, setSelectedHook] = useState<string | null>(null);
   const [hookData, setHookData] = useState<string | undefined>(undefined);
 
@@ -27,8 +30,8 @@ export default function App() {
     setWasConnected(isConnected);
   }, [isConnected, wasConnected, view]);
 
-  const handleSelectAuction = (address: string) => {
-    setSelectedAuction(address);
+  const handleSelectAuction = (address: string, chainId: number) => {
+    setSelectedAuction({ address, chainId });
     setView("auction-detail");
   };
 
@@ -37,6 +40,9 @@ export default function App() {
     setHookData(undefined);
     setView("auctions");
   };
+
+  const selectedAddress = selectedAuction?.address ?? null;
+  const selectedChainId = selectedAuction?.chainId ?? 0;
 
   const handleEnterApp = () => {
     setView("auctions");
@@ -61,9 +67,8 @@ export default function App() {
     setView("auction-detail");
   };
 
-  // Generate a simple name from the auction address
-  const auctionName = selectedAuction
-    ? `Auction ${selectedAuction.slice(0, 8)}...`
+  const auctionName = selectedAddress
+    ? `Auction ${selectedAddress.slice(0, 8)}...`
     : "Auction";
 
   return (
@@ -72,9 +77,10 @@ export default function App() {
         <LandingPage onEnterApp={handleEnterApp} />
       ) : (
         <Layout onLogoClick={() => setView("landing")}>
-          {view === "auction-detail" && selectedAuction ? (
+          {view === "auction-detail" && selectedAddress ? (
             <AuctionDashboard
-              auctionAddress={selectedAuction as Address}
+              auctionAddress={selectedAddress as Address}
+              auctionChainId={selectedChainId}
               auctionName={auctionName}
               hookData={hookData}
               onKYCClick={handleKYCClick}

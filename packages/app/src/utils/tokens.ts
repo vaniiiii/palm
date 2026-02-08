@@ -41,10 +41,8 @@ export function getTokenMeta(address: string): TokenMeta {
 }
 
 const USDC_BY_CHAIN: Record<number, string> = {
-  1: KNOWN_TOKENS.USDC,
   8453: KNOWN_TOKENS.USDC_BASE,
   42161: KNOWN_TOKENS.USDC_ARB,
-  11155111: KNOWN_TOKENS.USDC,
 };
 
 export function getUSDCAddress(chainId: number): string | null {

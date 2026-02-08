@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { formatEther } from "viem";
-import { useBlockNumber } from "wagmi";
+import { useBlockNumber, useChainId } from "wagmi";
 
-import { useAuctions, type IndexedAuction } from "../hooks/useIndexer";
+import { useAllAuctions, type IndexedAuction } from "../hooks/useIndexer";
+import { SUPPORTED_CHAIN_IDS, getChainName } from "../config/chains";
 import { requiresKYC } from "../utils/auction";
 import { fromQ96 } from "../utils/formatting";
 import { getTokenMeta } from "../utils/tokens";
@@ -33,26 +34,41 @@ export default function AuctionsPage({
   onSelectAuction,
   onLaunchAuction,
 }: {
-  onSelectAuction: (address: string) => void;
+  onSelectAuction: (address: string, chainId: number) => void;
   onLaunchAuction?: () => void;
 }) {
-  const { auctions, loading, error, refetch } = useAuctions();
-  const { data: currentBlock } = useBlockNumber({ watch: true });
+  const { auctions, loading, error, refetch } = useAllAuctions();
   const [filter, setFilter] = useState<FilterTab>("active");
+  const [chainFilter, setChainFilter] = useState<number | null>(null);
+
+  const connectedChainId = useChainId();
+  const { data: currentBlock } = useBlockNumber({ watch: true });
+
+  const blockByChain: Record<number, number> = useMemo(() => {
+    const m: Record<number, number> = {};
+    if (currentBlock) m[connectedChainId] = Number(currentBlock);
+    return m;
+  }, [currentBlock, connectedChainId]);
+
+  const filtered = useMemo(() => {
+    if (chainFilter === null) return auctions;
+    return auctions.filter(a => a.chainId === chainFilter);
+  }, [auctions, chainFilter]);
 
   const categorized = useMemo(() => {
-    if (!currentBlock) {
-      return { active: auctions, upcoming: [], completed: [] };
-    }
-    const block = Number(currentBlock);
     const active: IndexedAuction[] = [];
     const upcoming: IndexedAuction[] = [];
     const completed: IndexedAuction[] = [];
 
-    auctions.forEach((a) => {
-      if (a.startBlock > 0 && block < a.startBlock) {
+    filtered.forEach((a) => {
+      const block = blockByChain[a.chainId];
+      if (!block || a.startBlock === 0 || a.endBlock === 0) {
+        active.push(a);
+        return;
+      }
+      if (block < a.startBlock) {
         upcoming.push(a);
-      } else if (a.endBlock > 0 && block >= a.endBlock) {
+      } else if (block >= a.endBlock) {
         completed.push(a);
       } else {
         active.push(a);
@@ -60,7 +76,7 @@ export default function AuctionsPage({
     });
 
     return { active, upcoming, completed };
-  }, [auctions, currentBlock]);
+  }, [filtered, blockByChain]);
 
   const displayedAuctions =
     filter === "active"
@@ -101,54 +117,81 @@ export default function AuctionsPage({
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-1 overflow-x-auto">
-          {tabs.map((tab) => (
+      <div className="flex flex-col gap-3 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setFilter(tab.id)}
+                className={`px-3 sm:px-4 py-2 text-sm rounded-full transition-colors whitespace-nowrap ${
+                  filter === tab.id
+                    ? "bg-palm-bg-secondary text-palm-text"
+                    : "text-palm-text-3 hover:text-palm-text hover:bg-palm-bg-secondary/50"
+                }`}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className="ml-1.5 text-palm-text-3 text-xs">
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {onLaunchAuction && (
             <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id)}
-              className={`px-3 sm:px-4 py-2 text-sm rounded-full transition-colors whitespace-nowrap ${
-                filter === tab.id
-                  ? "bg-palm-bg-secondary text-palm-text"
-                  : "text-palm-text-3 hover:text-palm-text hover:bg-palm-bg-secondary/50"
+              onClick={onLaunchAuction}
+              className="px-4 py-2 bg-palm-cyan text-palm-bg text-sm font-medium hover:bg-palm-cyan/90 transition-colors whitespace-nowrap shrink-0"
+            >
+              + Launch
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setChainFilter(null)}
+            className={`px-3 py-1 text-xs rounded-full transition-colors ${
+              chainFilter === null
+                ? "bg-palm-cyan/20 text-palm-cyan"
+                : "text-palm-text-3 hover:text-palm-text"
+            }`}
+          >
+            All chains
+          </button>
+          {SUPPORTED_CHAIN_IDS.map((id) => (
+            <button
+              key={id}
+              onClick={() => setChainFilter(id)}
+              className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                chainFilter === id
+                  ? "bg-palm-cyan/20 text-palm-cyan"
+                  : "text-palm-text-3 hover:text-palm-text"
               }`}
             >
-              {tab.label}
-              {tab.count > 0 && (
-                <span className="ml-1.5 text-palm-text-3 text-xs">
-                  {tab.count}
-                </span>
-              )}
+              {getChainName(id)}
             </button>
           ))}
         </div>
-        {onLaunchAuction && (
-          <button
-            onClick={onLaunchAuction}
-            className="px-4 py-2 bg-palm-cyan text-palm-bg text-sm font-medium hover:bg-palm-cyan/90 transition-colors whitespace-nowrap shrink-0"
-          >
-            + Launch
-          </button>
-        )}
       </div>
 
       <div className="hidden md:block border border-palm-border/30 rounded-lg overflow-hidden">
         <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-palm-bg-secondary text-palm-text-3 text-xs uppercase tracking-wider">
           <div className="col-span-1">#</div>
-          <div className="col-span-4">Token</div>
+          <div className="col-span-3">Token</div>
+          <div className="col-span-2">Chain</div>
           <div className="col-span-2 text-right">Current FDV</div>
           <div className="col-span-2 text-right">Committed</div>
-          <div className="col-span-3 text-right">Time Remaining</div>
+          <div className="col-span-2 text-right">Time Remaining</div>
         </div>
 
         {displayedAuctions.length > 0 ? (
           displayedAuctions.map((auction, idx) => (
             <AuctionRow
-              key={auction.id}
+              key={`${auction.chainId}-${auction.id}`}
               auction={auction}
               index={idx + 1}
-              currentBlock={currentBlock ? Number(currentBlock) : undefined}
-              onClick={() => onSelectAuction(auction.id)}
+              onClick={() => onSelectAuction(auction.id, auction.chainId)}
             />
           ))
         ) : (
@@ -162,11 +205,10 @@ export default function AuctionsPage({
         {displayedAuctions.length > 0 ? (
           displayedAuctions.map((auction, idx) => (
             <AuctionCard
-              key={auction.id}
+              key={`${auction.chainId}-${auction.id}`}
               auction={auction}
               index={idx + 1}
-              currentBlock={currentBlock ? Number(currentBlock) : undefined}
-              onClick={() => onSelectAuction(auction.id)}
+              onClick={() => onSelectAuction(auction.id, auction.chainId)}
             />
           ))
         ) : (
@@ -186,12 +228,10 @@ export default function AuctionsPage({
 function AuctionRow({
   auction,
   index,
-  currentBlock,
   onClick,
 }: {
   auction: IndexedAuction;
   index: number;
-  currentBlock?: number;
   onClick: () => void;
 }) {
   const hasKYC = requiresKYC(auction.validationHook);
@@ -200,49 +240,7 @@ function AuctionRow({
   const committed = BigInt(auction.currencyRaised || "0");
   const tokenMeta = getTokenMeta(auction.currency);
   const tokenAvatar = useMemo(() => generateTokenAvatar(auction.token), [auction.token]);
-
-  const timeInfo = useMemo(() => {
-    if (!currentBlock || auction.startBlock === 0 || auction.endBlock === 0) {
-      return { label: "—", progress: 0, status: "unknown" as const };
-    }
-
-    const block = currentBlock;
-    const start = auction.startBlock;
-    const end = auction.endBlock;
-
-    if (block < start) {
-      const blocksUntil = start - block;
-      const minutes = Math.floor((blocksUntil * 2) / 60);
-      const hours = Math.floor(minutes / 60);
-      const days = Math.floor(hours / 24);
-
-      let label = "";
-      if (days > 0) label = `Starting in ${days}d ${hours % 24}h`;
-      else if (hours > 0) label = `Starting in ${hours}h ${minutes % 60}m`;
-      else label = `Starting in ${minutes}m`;
-
-      return { label, progress: 0, status: "upcoming" as const };
-    }
-
-    if (block >= end) {
-      return { label: "Completed", progress: 100, status: "completed" as const };
-    }
-
-    const blocksRemaining = end - block;
-    const totalDuration = end - start;
-    const progress = ((block - start) / totalDuration) * 100;
-
-    const minutes = Math.floor((blocksRemaining * 2) / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    let label = "";
-    if (days > 0) label = `${days}d ${hours % 24}h ${minutes % 60}m`;
-    else if (hours > 0) label = `${hours}h ${minutes % 60}m`;
-    else label = `${minutes}m`;
-
-    return { label, progress, status: "active" as const };
-  }, [currentBlock, auction.startBlock, auction.endBlock]);
+  const timeInfo = useAuctionTime(auction);
 
   return (
     <div
@@ -253,7 +251,7 @@ function AuctionRow({
         {index}
       </div>
 
-      <div className="col-span-4 flex items-center gap-3">
+      <div className="col-span-3 flex items-center gap-3">
         <img src={tokenAvatar} alt="" className="w-8 h-8 rounded-full shrink-0" />
         <div>
           <div className="flex items-center gap-2">
@@ -270,6 +268,10 @@ function AuctionRow({
         </div>
       </div>
 
+      <div className="col-span-2 flex items-center">
+        <ChainBadge chainId={auction.chainId} />
+      </div>
+
       <div className="col-span-2 flex items-center justify-end gap-1.5 text-palm-text text-sm">
         {tokenMeta.logo && <img src={tokenMeta.logo} alt={tokenMeta.symbol} className="w-4 h-4" />}
         {formatFDV(clearingPrice, totalSupply, tokenMeta.symbol)}
@@ -280,7 +282,7 @@ function AuctionRow({
         {formatVolume(committed, tokenMeta.symbol)}
       </div>
 
-      <div className="col-span-3 flex flex-col items-end gap-1">
+      <div className="col-span-2 flex flex-col items-end gap-1">
         <span
           className={`text-sm ${
             timeInfo.status === "completed"
@@ -312,12 +314,10 @@ function AuctionRow({
 function AuctionCard({
   auction,
   index,
-  currentBlock,
   onClick,
 }: {
   auction: IndexedAuction;
   index: number;
-  currentBlock?: number;
   onClick: () => void;
 }) {
   const hasKYC = requiresKYC(auction.validationHook);
@@ -326,49 +326,7 @@ function AuctionCard({
   const committed = BigInt(auction.currencyRaised || "0");
   const tokenMeta = getTokenMeta(auction.currency);
   const tokenAvatar = useMemo(() => generateTokenAvatar(auction.token), [auction.token]);
-
-  const timeInfo = useMemo(() => {
-    if (!currentBlock || auction.startBlock === 0 || auction.endBlock === 0) {
-      return { label: "—", progress: 0, status: "unknown" as const };
-    }
-
-    const block = currentBlock;
-    const start = auction.startBlock;
-    const end = auction.endBlock;
-
-    if (block < start) {
-      const blocksUntil = start - block;
-      const minutes = Math.floor((blocksUntil * 2) / 60);
-      const hours = Math.floor(minutes / 60);
-      const days = Math.floor(hours / 24);
-
-      let label = "";
-      if (days > 0) label = `Starts in ${days}d ${hours % 24}h`;
-      else if (hours > 0) label = `Starts in ${hours}h ${minutes % 60}m`;
-      else label = `Starts in ${minutes}m`;
-
-      return { label, progress: 0, status: "upcoming" as const };
-    }
-
-    if (block >= end) {
-      return { label: "Completed", progress: 100, status: "completed" as const };
-    }
-
-    const blocksRemaining = end - block;
-    const totalDuration = end - start;
-    const progress = ((block - start) / totalDuration) * 100;
-
-    const minutes = Math.floor((blocksRemaining * 2) / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    let label = "";
-    if (days > 0) label = `${days}d ${hours % 24}h left`;
-    else if (hours > 0) label = `${hours}h ${minutes % 60}m left`;
-    else label = `${minutes}m left`;
-
-    return { label, progress, status: "active" as const };
-  }, [currentBlock, auction.startBlock, auction.endBlock]);
+  const timeInfo = useAuctionTime(auction);
 
   return (
     <div
@@ -386,6 +344,7 @@ function AuctionCard({
               {hasKYC && (
                 <span className="text-palm-green text-[10px] font-medium">KYC</span>
               )}
+              <ChainBadge chainId={auction.chainId} />
             </div>
             <div className="text-palm-text-3 text-xs font-mono">
               {auction.token.slice(0, 6)}...{auction.token.slice(-4)}
@@ -437,4 +396,48 @@ function AuctionCard({
       </div>
     </div>
   );
+}
+
+function ChainBadge({ chainId }: { chainId: number }) {
+  const name = getChainName(chainId);
+  return (
+    <span className="text-[10px] text-palm-text-3 border border-palm-border/50 px-1.5 py-0.5 rounded-sm">
+      {name}
+    </span>
+  );
+}
+
+function useAuctionTime(auction: IndexedAuction) {
+  const { data: blockNumber } = useBlockNumber({ chainId: auction.chainId, watch: true });
+  return useMemo(() => {
+    const block = blockNumber ? Number(blockNumber) : undefined;
+    if (!block || auction.startBlock === 0 || auction.endBlock === 0) {
+      return { label: "\u2014", progress: 0, status: "unknown" as const };
+    }
+
+    if (block < auction.startBlock) {
+      const blocksUntil = auction.startBlock - block;
+      return { label: formatBlockDuration(blocksUntil, "Starts in "), progress: 0, status: "upcoming" as const };
+    }
+
+    if (block >= auction.endBlock) {
+      return { label: "Completed", progress: 100, status: "completed" as const };
+    }
+
+    const blocksRemaining = auction.endBlock - block;
+    const totalDuration = auction.endBlock - auction.startBlock;
+    const progress = ((block - auction.startBlock) / totalDuration) * 100;
+
+    return { label: formatBlockDuration(blocksRemaining, "", " left"), progress, status: "active" as const };
+  }, [blockNumber, auction.startBlock, auction.endBlock]);
+}
+
+function formatBlockDuration(blocks: number, prefix = "", suffix = ""): string {
+  const minutes = Math.floor((blocks * 2) / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${prefix}${days}d ${hours % 24}h${suffix}`;
+  if (hours > 0) return `${prefix}${hours}h ${minutes % 60}m${suffix}`;
+  return `${prefix}${minutes}m${suffix}`;
 }

@@ -13,6 +13,7 @@ import { BidForm } from "./BidForm.js";
 
 interface AuctionDashboardProps {
   auctionAddress: Address;
+  auctionChainId: number;
   auctionName?: string;
   hookData?: string;
   onKYCClick?: (hookAddress: string) => void;
@@ -23,13 +24,14 @@ type BottomTab = "activity" | "details";
 
 export function AuctionDashboard({
   auctionAddress,
+  auctionChainId,
   auctionName = "Auction",
   hookData: hookDataProp,
   onKYCClick,
   onBack,
 }: AuctionDashboardProps) {
   const [bottomTab, setBottomTab] = useState<BottomTab>("activity");
-  const { auction, bids, checkpoints, loading, error, refetch } = useAuctionDetail(auctionAddress);
+  const { auction, bids, checkpoints, loading, error, refetch } = useAuctionDetail(auctionAddress, auctionChainId);
   const { data: currentBlock } = useBlockNumber({ watch: true });
   const { address } = useAccount();
   const { isVerified, hookData: cachedHookData, provider: cachedProvider, clearKYC } = useKYCCache(address);
@@ -204,6 +206,7 @@ export function AuctionDashboard({
         <div className="bg-palm-bg-secondary border border-palm-border/30 p-4">
           <BidForm
             auctionAddress={auctionAddress}
+            auctionChainId={auctionChainId}
             floorPrice={auction.floorPrice}
             clearingPrice={auction.lastClearingPriceQ96}
             tickSpacing={auction.tickSpacing}

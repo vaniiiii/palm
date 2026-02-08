@@ -1,6 +1,6 @@
 import { http, createConfig } from "wagmi";
 import type { Chain } from "viem";
-import { mainnet, sepolia, anvil, base, arbitrum } from "wagmi/chains";
+import { anvil, base, arbitrum } from "wagmi/chains";
 import { connectorsForWallets } from "@rainbow-me/rainbowkit";
 import {
   rabbyWallet,
@@ -28,7 +28,7 @@ const customChain: Chain | null = customChainId && customRpcUrl ? {
   } : undefined,
 } : null;
 
-const standardChains = [base, arbitrum, sepolia, anvil, mainnet] as const;
+const standardChains = [base, arbitrum, anvil] as const;
 const chains: readonly [Chain, ...Chain[]] = customChain
   ? [customChain, ...standardChains]
   : [base, ...standardChains.slice(1)];
@@ -37,8 +37,6 @@ const transports: Record<number, ReturnType<typeof http>> = {
   [base.id]: http(import.meta.env.VITE_BASE_RPC_URL),
   [arbitrum.id]: http(import.meta.env.VITE_ARB_RPC_URL),
   [anvil.id]: http(import.meta.env.VITE_ANVIL_RPC_URL),
-  [sepolia.id]: http(import.meta.env.VITE_SEPOLIA_RPC_URL),
-  [mainnet.id]: http(import.meta.env.VITE_MAINNET_RPC_URL),
 };
 
 if (customChain) {

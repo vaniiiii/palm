@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useBalance, usePublicClient, useChainId } from "wagmi";
-import { parseEther, formatEther, decodeErrorResult, type Address, type Abi } from "viem";
+import { parseEther, formatEther, decodeErrorResult, encodeFunctionData, type Address, type Abi } from "viem";
 import { useToast } from "../Toast";
 import { isLocalNetwork } from "../../wagmi";
 import { fromQ96, toQ96Aligned } from "../../utils/formatting";
 import { getProviderName } from "../../utils/auction";
+import { getChainName } from "../../config/chains";
+import { useCrossChainBid, type CrossChainStatus } from "../../hooks/useCrossChainBid";
 
 // CCA ABI for submitBid
 const CCA_ABI = [
@@ -129,6 +131,7 @@ function formatPalmError(errorName: string, args: readonly unknown[] | undefined
 
 interface BidFormProps {
   auctionAddress: Address;
+  auctionChainId: number;
   floorPrice: string;
   clearingPrice: string;
   tickSpacing: string;
@@ -144,6 +147,7 @@ interface BidFormProps {
 
 export function BidForm({
   auctionAddress,
+  auctionChainId,
   floorPrice,
   clearingPrice,
   tickSpacing,
@@ -162,6 +166,9 @@ export function BidForm({
   const { data: balance, refetch: refetchBalance } = useBalance({ address });
   const { showToast } = useToast();
   const showFaucet = isLocalNetwork(chainId);
+
+  const isCrossChain = chainId !== auctionChainId && !isLocalNetwork(auctionChainId);
+  const crossChain = useCrossChainBid();
 
   // Form state
   const [budgetInput, setBudgetInput] = useState("");
@@ -254,6 +261,30 @@ export function BidForm({
     }
   }, [txError, showToast]);
 
+  // Handle cross-chain status
+  const prevCrossChainStatusRef = useRef<CrossChainStatus>("idle");
+  useEffect(() => {
+    if (crossChain.status === prevCrossChainStatusRef.current) return;
+    prevCrossChainStatusRef.current = crossChain.status;
+
+    switch (crossChain.status) {
+      case "awaiting-approval":
+        showToast("info", "Confirm transaction in wallet...");
+        break;
+      case "bridging":
+        showToast("info", `Bridging to ${getChainName(auctionChainId)}...`);
+        break;
+      case "done":
+        showToast("success", "Cross-chain bid submitted!");
+        refetchBalance();
+        onSuccess?.();
+        break;
+      case "failed":
+        if (crossChain.error) showToast("error", crossChain.error);
+        break;
+    }
+  }, [crossChain.status, crossChain.error, auctionChainId, showToast, refetchBalance, onSuccess]);
+
   // Handle success - refetch balance and show toast
   useEffect(() => {
     if (isSuccess && !prevSuccessRef.current) {
@@ -289,35 +320,53 @@ export function BidForm({
 
   const [isSimulating, setIsSimulating] = useState(false);
 
-  const handleSubmit = useCallback(async () => {
-    if (!budget || !maxPrice || !isConnected || !address || !publicClient) return;
-
+  const buildBidArgs = useCallback(() => {
     const tickSpacingQ96 = BigInt(tickSpacing || "0");
     const floorPriceQ96 = BigInt(floorPrice || "0");
     const clearingPriceQ96 = BigInt(clearingPrice || "0");
 
-    // Align price to tick spacing (round up)
     let maxPriceQ96 = toQ96Aligned({ value: maxPrice, tickSpacing: tickSpacingQ96 });
-
-    // Ensure price is above clearing price (at least clearing + 1 tick)
     const minPrice = (clearingPriceQ96 > floorPriceQ96 ? clearingPriceQ96 : floorPriceQ96) + tickSpacingQ96;
-    if (maxPriceQ96 < minPrice) {
-      maxPriceQ96 = minPrice;
-    }
+    if (maxPriceQ96 < minPrice) maxPriceQ96 = minPrice;
 
     const amountWei = parseEther(budget.toString());
+    return { maxPriceQ96, amountWei };
+  }, [budget, maxPrice, floorPrice, clearingPrice, tickSpacing]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!budget || !maxPrice || !isConnected || !address) return;
+
+    const { maxPriceQ96, amountWei } = buildBidArgs();
+
+    if (isCrossChain) {
+      const calldata = encodeFunctionData({
+        abi: CCA_ABI,
+        functionName: "submitBid",
+        args: [maxPriceQ96, amountWei, address, hookData as `0x${string}`],
+      });
+
+      showToast("info", `Getting cross-chain route from ${getChainName(chainId)}...`);
+      await crossChain.execute({
+        sourceChainId: chainId,
+        destChainId: auctionChainId,
+        amount: amountWei,
+        fromAddress: address,
+        destContractAddress: auctionAddress,
+        destCalldata: calldata,
+      });
+      return;
+    }
+
+    if (!publicClient) return;
 
     console.log("=== Submitting Bid ===");
     console.log("Auction:", auctionAddress);
     console.log("Max Price (Q96 aligned):", maxPriceQ96.toString());
     console.log("Amount (ETH):", budget);
-    console.log("HookData length:", hookData?.length || 0);
 
-    // Simulate first to catch on-chain errors before wasting nonce
     setIsSimulating(true);
     showToast("info", "Simulating transaction...");
     try {
-      console.log("=== Simulating transaction ===");
       await publicClient.simulateContract({
         address: auctionAddress,
         abi: CCA_ABI,
@@ -326,15 +375,12 @@ export function BidForm({
         value: amountWei,
         account: address,
       });
-      console.log("=== Simulation successful ===");
       showToast("success", "Simulation passed, sending transaction...");
     } catch (simError: any) {
-      console.error("=== Simulation failed ===", simError);
+      console.error("Simulation failed:", simError);
       setIsSimulating(false);
 
-      // Try to decode the error properly with ABI
       const userMessage = decodeContractError(simError)
-        // Fallback: check for common issues in error message
         || ((simError?.message || "").toLowerCase().includes("insufficient") ? "Insufficient ETH balance" : null)
         || ((simError?.message || "").toLowerCase().includes("user rejected") ? "Transaction rejected" : null);
 
@@ -347,7 +393,6 @@ export function BidForm({
     }
     setIsSimulating(false);
 
-    // Simulation passed - now send the real transaction
     writeContract({
       address: auctionAddress,
       abi: CCA_ABI,
@@ -355,7 +400,7 @@ export function BidForm({
       args: [maxPriceQ96, amountWei, address, hookData as `0x${string}`],
       value: amountWei,
     });
-  }, [budget, maxPrice, isConnected, address, auctionAddress, floorPrice, clearingPrice, tickSpacing, hookData, writeContract, publicClient, showToast]);
+  }, [budget, maxPrice, isConnected, address, auctionAddress, auctionChainId, chainId, isCrossChain, floorPrice, clearingPrice, tickSpacing, hookData, writeContract, publicClient, showToast, buildBidArgs, crossChain]);
 
   // Calculate blocks remaining
   // If endBlock is 0, we don't have the data yet, so don't show as ended
@@ -367,7 +412,10 @@ export function BidForm({
   // WORKAROUND: KYC verification uses localStorage cache (see useKYCCache.ts)
   // TODO: Replace with on-chain registration check
   const needsKYC = requiresKYC && !isKYCVerified;
-  const isValidBid = budget > 0 && maxPrice >= floorPriceNum && isConnected && !needsKYC;
+  const isAnvilAuction = isLocalNetwork(auctionChainId);
+  const cantBidCrossChain = isCrossChain && isAnvilAuction;
+  const isCrossChainBusy = crossChain.status !== "idle" && crossChain.status !== "done" && crossChain.status !== "failed";
+  const isValidBid = budget > 0 && maxPrice >= floorPriceNum && isConnected && !needsKYC && !cantBidCrossChain;
 
   // Format price for display
   const formatPriceDisplay = (price: number): string => {
@@ -433,6 +481,18 @@ export function BidForm({
         </div>
       ) : (
         <>
+          {/* Cross-chain banner */}
+          {isCrossChain && !cantBidCrossChain && (
+            <div className="mb-3 px-3 py-2 border border-palm-cyan/30 bg-palm-cyan/5 text-[10px] text-palm-cyan uppercase tracking-wider">
+              {getChainName(chainId)} &rarr; {getChainName(auctionChainId)} via LI.FI
+            </div>
+          )}
+          {cantBidCrossChain && (
+            <div className="mb-3 px-3 py-2 border border-palm-pink/30 bg-palm-pink/5 text-[10px] text-palm-pink">
+              Switch to Anvil to bid on local auctions
+            </div>
+          )}
+
           {/* Balance + Faucet (faucet only on local networks) */}
           {isConnected && (
             <div className="flex items-center justify-between mb-3 pb-3 border-b border-palm-border/30">
@@ -541,10 +601,15 @@ export function BidForm({
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={!isValidBid || isPending || isConfirming || isSimulating}
+              disabled={!isValidBid || isPending || isConfirming || isSimulating || isCrossChainBusy}
               className="w-full py-2.5 bg-palm-cyan text-palm-bg text-xs font-bold uppercase tracking-wider hover:bg-palm-cyan/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {isSimulating ? (
+              {isCrossChainBusy ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-palm-bg animate-pulse" />
+                  {crossChainStatusLabel(crossChain.status, auctionChainId)}
+                </span>
+              ) : isSimulating ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-1.5 h-1.5 bg-palm-bg animate-pulse" />
                   Simulating...
@@ -554,6 +619,8 @@ export function BidForm({
                   <span className="w-1.5 h-1.5 bg-palm-bg animate-pulse" />
                   {isPending ? "Confirm..." : "Submitting..."}
                 </span>
+              ) : isCrossChain ? (
+                `Bid from ${getChainName(chainId)}`
               ) : (
                 "Submit Bid"
               )}
@@ -564,4 +631,13 @@ export function BidForm({
       )}
     </div>
   );
+}
+
+function crossChainStatusLabel(status: CrossChainStatus, destChainId: number): string {
+  switch (status) {
+    case "quoting": return "Getting route...";
+    case "awaiting-approval": return "Confirm in wallet...";
+    case "bridging": return `Bridging to ${getChainName(destChainId)}...`;
+    default: return "Processing...";
+  }
 }
