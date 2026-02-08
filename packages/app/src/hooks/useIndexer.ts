@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useChainId } from "wagmi";
-import { getChainConfig } from "../config/chains";
+import { getChainConfig, CHAIN_CONFIG, type IndexerType } from "../config/chains";
 
 function getIndexerUrl(chainId: number | undefined): string | null {
   const config = getChainConfig(chainId);
   return config?.indexerUrl || null;
+}
+
+function getIndexerType(chainId: number | undefined): IndexerType {
+  const config = getChainConfig(chainId);
+  return config?.indexerType || 'ponder';
 }
 
 async function gql<T>(indexerUrl: string, query: string, variables?: Record<string, unknown>, retries = 2): Promise<T> {
@@ -32,10 +37,9 @@ async function gql<T>(indexerUrl: string, query: string, variables?: Record<stri
   throw lastError;
 }
 
-// ---- Types matching the indexer schema ----
-
 export interface IndexedAuction {
   id: string;
+  chainId: number;
   token: string;
   currency: string;
   amount: string;
@@ -76,7 +80,89 @@ export interface IndexedCheckpoint {
   clearingPriceQ96: string;
 }
 
-// ---- Hooks ----
+const AUCTION_FIELDS = `
+  id token currency amount startBlock endBlock claimBlock
+  totalSupply floorPrice tickSpacing validationHook createdAt
+  lastClearingPriceQ96 currencyRaised totalCleared
+  numBids numBidders totalBidAmount cumulativeMps
+`;
+
+const BID_FIELDS = `
+  id auctionId amount maxPriceQ96 owner startBlock
+  tokensFilled amountFilled exited claimed
+`;
+
+const CHECKPOINT_FIELDS = `id auctionId blockNumber clearingPriceQ96`;
+
+// --- Ponder queries ---
+
+const PONDER_AUCTIONS_QUERY = `
+  query {
+    auctions(orderBy: "createdAt", orderDirection: "desc") {
+      items { ${AUCTION_FIELDS} }
+    }
+  }
+`;
+
+const PONDER_DETAIL_QUERY = `
+  query($id: String!) {
+    auction(id: $id) { ${AUCTION_FIELDS} }
+    bids(where: { auctionId: $id }, orderBy: "startBlock", orderDirection: "desc", limit: 50) {
+      items { ${BID_FIELDS} }
+    }
+    checkpoints(where: { auctionId: $id }, orderBy: "blockNumber", orderDirection: "asc", limit: 100) {
+      items { ${CHECKPOINT_FIELDS} }
+    }
+  }
+`;
+
+// --- Envio (Hasura) queries ---
+
+const ENVIO_AUCTIONS_QUERY = `
+  query {
+    Auction(order_by: { createdAt: desc }) { ${AUCTION_FIELDS} }
+  }
+`;
+
+const ENVIO_DETAIL_QUERY = `
+  query($id: String!) {
+    Auction_by_pk(id: $id) { ${AUCTION_FIELDS} }
+    Bid(where: { auctionId: { _eq: $id } }, order_by: { startBlock: desc }, limit: 50) {
+      ${BID_FIELDS}
+    }
+    Checkpoint(where: { auctionId: { _eq: $id } }, order_by: { blockNumber: asc }, limit: 100) {
+      ${CHECKPOINT_FIELDS}
+    }
+  }
+`;
+
+// --- Response normalizers ---
+
+function extractAuctions(data: any, type: IndexerType): Omit<IndexedAuction, "chainId">[] {
+  if (type === 'envio') return data.Auction || [];
+  return data.auctions?.items || [];
+}
+
+function extractDetail(data: any, type: IndexerType): {
+  auction: IndexedAuction | null;
+  bids: IndexedBid[];
+  checkpoints: IndexedCheckpoint[];
+} {
+  if (type === 'envio') {
+    return {
+      auction: data.Auction_by_pk || null,
+      bids: data.Bid || [],
+      checkpoints: data.Checkpoint || [],
+    };
+  }
+  return {
+    auction: data.auction || null,
+    bids: data.bids?.items || [],
+    checkpoints: data.checkpoints?.items || [],
+  };
+}
+
+// --- Hooks ---
 
 export function useAuctions() {
   const chainId = useChainId();
@@ -93,37 +179,14 @@ export function useAuctions() {
       return;
     }
 
+    const type = getIndexerType(chainId);
+    const query = type === 'envio' ? ENVIO_AUCTIONS_QUERY : PONDER_AUCTIONS_QUERY;
+
     try {
       setLoading(true);
       setError(null);
-      const data = await gql<{ auctions: { items: IndexedAuction[] } }>(indexerUrl, `
-        query {
-          auctions(orderBy: "createdAt", orderDirection: "desc") {
-            items {
-              id
-              token
-              currency
-              amount
-              startBlock
-              endBlock
-              claimBlock
-              totalSupply
-              floorPrice
-              tickSpacing
-              validationHook
-              createdAt
-              lastClearingPriceQ96
-              currencyRaised
-              totalCleared
-              numBids
-              numBidders
-              totalBidAmount
-              cumulativeMps
-            }
-          }
-        }
-      `);
-      setAuctions(data.auctions.items);
+      const data = await gql<any>(indexerUrl, query);
+      setAuctions(extractAuctions(data, type).map(a => ({ ...a, chainId })));
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -140,8 +203,65 @@ export function useAuctions() {
   return { auctions, loading, error, refetch };
 }
 
-export function useAuctionDetail(auctionId: string | null) {
-  const chainId = useChainId();
+export function useAllAuctions() {
+  const [auctions, setAuctions] = useState<IndexedAuction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    const entries = Object.entries(CHAIN_CONFIG)
+      .filter(([, cfg]) => cfg.indexerUrl)
+      .map(([id, cfg]) => ({ chainId: Number(id), indexerUrl: cfg.indexerUrl, indexerType: cfg.indexerType }));
+
+    if (entries.length === 0) {
+      setAuctions([]);
+      setLoading(false);
+      setError("No indexers configured");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      const results = await Promise.allSettled(
+        entries.map(async ({ chainId, indexerUrl, indexerType }) => {
+          const query = indexerType === 'envio' ? ENVIO_AUCTIONS_QUERY : PONDER_AUCTIONS_QUERY;
+          const data = await gql<any>(indexerUrl, query);
+          return extractAuctions(data, indexerType).map(a => ({ ...a, chainId }));
+        })
+      );
+
+      const merged: IndexedAuction[] = [];
+      const errors: string[] = [];
+      for (const r of results) {
+        if (r.status === "fulfilled") merged.push(...r.value);
+        else errors.push(r.reason?.message || "Unknown error");
+      }
+
+      merged.sort((a, b) => b.createdAt - a.createdAt);
+      setAuctions(merged);
+      if (merged.length === 0 && errors.length > 0) {
+        setError(errors.join("; "));
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refetch();
+    const interval = setInterval(refetch, 5000);
+    return () => clearInterval(interval);
+  }, [refetch]);
+
+  return { auctions, loading, error, refetch };
+}
+
+export function useAuctionDetail(auctionId: string | null, overrideChainId?: number) {
+  const walletChainId = useChainId();
+  const chainId = overrideChainId ?? walletChainId;
   const [auction, setAuction] = useState<IndexedAuction | null>(null);
   const [bids, setBids] = useState<IndexedBid[]>([]);
   const [checkpoints, setCheckpoints] = useState<IndexedCheckpoint[]>([]);
@@ -164,70 +284,20 @@ export function useAuctionDetail(auctionId: string | null) {
       return;
     }
 
+    const type = getIndexerType(chainId);
+    const query = type === 'envio' ? ENVIO_DETAIL_QUERY : PONDER_DETAIL_QUERY;
+
     try {
       if (!hasDataRef.current) {
         setLoading(true);
       }
-      const data = await gql<{
-        auction: IndexedAuction | null;
-        bids: { items: IndexedBid[] };
-        checkpoints: { items: IndexedCheckpoint[] };
-      }>(
-        indexerUrl,
-        `
-        query($id: String!) {
-          auction(id: $id) {
-            id
-            token
-            currency
-            amount
-            startBlock
-            endBlock
-            claimBlock
-            totalSupply
-            floorPrice
-            tickSpacing
-            validationHook
-            createdAt
-            lastClearingPriceQ96
-            currencyRaised
-            totalCleared
-            numBids
-            numBidders
-            totalBidAmount
-            cumulativeMps
-          }
-          bids(where: { auctionId: $id }, orderBy: "startBlock", orderDirection: "desc", limit: 50) {
-            items {
-              id
-              auctionId
-              amount
-              maxPriceQ96
-              owner
-              startBlock
-              tokensFilled
-              amountFilled
-              exited
-              claimed
-            }
-          }
-          checkpoints(where: { auctionId: $id }, orderBy: "blockNumber", orderDirection: "asc", limit: 100) {
-            items {
-              id
-              auctionId
-              blockNumber
-              clearingPriceQ96
-            }
-          }
-        }
-      `,
-        { id: auctionId },
-      );
+      const data = await gql<any>(indexerUrl, query, { id: auctionId });
+      const result = extractDetail(data, type);
 
-      if (data.auction) {
-        setAuction(data.auction);
-        setBids(data.bids?.items || []);
-        setCheckpoints(data.checkpoints?.items || []);
+      if (result.auction) {
+        setAuction({ ...result.auction, chainId });
+        setBids(result.bids);
+        setCheckpoints(result.checkpoints);
         setError(null);
         hasDataRef.current = true;
       } else if (!hasDataRef.current) {
