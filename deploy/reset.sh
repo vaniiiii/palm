@@ -33,7 +33,16 @@ echo "Chains: anvil=$USE_ANVIL base=$USE_BASE arb=$USE_ARB kyc=$KYC_MODE"
 # Generate Caddyfile based on active chains
 generate_caddyfile() {
     cat <<'EOF'
+(cors) {
+	header Access-Control-Allow-Origin *
+	header Access-Control-Allow-Methods "GET, POST, OPTIONS"
+	header Access-Control-Allow-Headers "Content-Type"
+	@options method OPTIONS
+	respond @options 204
+}
+
 {$API_DOMAIN} {
+	import cors
 	reverse_proxy prover:3001
 }
 EOF
@@ -42,10 +51,12 @@ EOF
         cat <<'EOF'
 
 {$ANVIL_INDEXER_DOMAIN} {
+	import cors
 	reverse_proxy indexer:42069
 }
 
 {$ANVIL_RPC_DOMAIN} {
+	import cors
 	reverse_proxy anvil:8545
 }
 EOF
@@ -55,6 +66,7 @@ EOF
         cat <<'EOF'
 
 {$BASE_INDEXER_DOMAIN} {
+	import cors
 	reverse_proxy indexer-base:42069
 }
 EOF
@@ -64,6 +76,7 @@ EOF
         cat <<'EOF'
 
 {$ARB_INDEXER_DOMAIN} {
+	import cors
 	reverse_proxy indexer-arb:42069
 }
 EOF
