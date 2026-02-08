@@ -8,7 +8,6 @@ import { getProviderName } from "../../utils/auction";
 import { getChainName } from "../../config/chains";
 import { useCrossChainBid, type CrossChainStatus } from "../../hooks/useCrossChainBid";
 
-// CCA ABI for submitBid
 const CCA_ABI = [
   {
     name: "submitBid",
@@ -23,6 +22,26 @@ const CCA_ABI = [
     stateMutability: "payable",
   },
 ] as const;
+
+const BID_ADAPTER_ABI = [
+  {
+    name: "submitBid",
+    type: "function",
+    inputs: [
+      { name: "auction", type: "address" },
+      { name: "maxPrice", type: "uint256" },
+      { name: "owner", type: "address" },
+      { name: "hookData", type: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "payable",
+  },
+] as const;
+
+const BID_ADAPTER: Record<number, Address> = {
+  8453: "0x23698Af4Bee75B66fC29473d9F2101b844786970",
+  42161: "0xcAE3c786CDb95b9187C2F7DC1D886a7965b52ee8",
+};
 
 // Palm hook + CCA error ABIs for proper decoding
 const ERROR_ABI: Abi = [
@@ -339,10 +358,16 @@ export function BidForm({
     const { maxPriceQ96, amountWei } = buildBidArgs();
 
     if (isCrossChain) {
+      const adapter = BID_ADAPTER[auctionChainId];
+      if (!adapter) {
+        showToast("error", `No bid adapter configured for ${getChainName(auctionChainId)}`);
+        return;
+      }
+
       const calldata = encodeFunctionData({
-        abi: CCA_ABI,
+        abi: BID_ADAPTER_ABI,
         functionName: "submitBid",
-        args: [maxPriceQ96, amountWei, address, hookData as `0x${string}`],
+        args: [auctionAddress, maxPriceQ96, address, hookData as `0x${string}`],
       });
 
       showToast("info", `Getting cross-chain route from ${getChainName(chainId)}...`);
@@ -351,7 +376,7 @@ export function BidForm({
         destChainId: auctionChainId,
         amount: amountWei,
         fromAddress: address,
-        destContractAddress: auctionAddress,
+        destContractAddress: adapter,
         destCalldata: calldata,
       });
       return;

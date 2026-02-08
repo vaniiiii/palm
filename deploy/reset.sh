@@ -34,9 +34,9 @@ echo "Chains: anvil=$USE_ANVIL base=$USE_BASE arb=$USE_ARB kyc=$KYC_MODE"
 generate_caddyfile() {
     cat <<'EOF'
 (cors) {
-	header Access-Control-Allow-Origin *
-	header Access-Control-Allow-Methods "GET, POST, OPTIONS"
-	header Access-Control-Allow-Headers "Content-Type"
+	header ?Access-Control-Allow-Origin *
+	header ?Access-Control-Allow-Methods "GET, POST, OPTIONS"
+	header ?Access-Control-Allow-Headers "Content-Type"
 	@options method OPTIONS
 	respond @options 204
 }
