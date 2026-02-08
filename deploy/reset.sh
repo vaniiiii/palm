@@ -72,6 +72,15 @@ generate_caddyfile > Caddyfile
 echo "Stopping all containers..."
 docker compose --profile anvil --profile base --profile arbitrum down -v
 
+# Clear anvil addresses — fresh anvil has no contracts from previous runs
+if [[ "$USE_ANVIL" == true ]]; then
+    sed "s|ANVIL_FACTORY_ADDRESS=.*|ANVIL_FACTORY_ADDRESS=|
+         s|ANVIL_AUCTION_ADDRESS=.*|ANVIL_AUCTION_ADDRESS=|
+         s|ANVIL_HOOK_ADDRESS=.*|ANVIL_HOOK_ADDRESS=|
+         s|ANVIL_TOKEN_ADDRESS=.*|ANVIL_TOKEN_ADDRESS=|" .env > .env.tmp && mv .env.tmp .env
+    source .env
+fi
+
 echo "Starting infra..."
 INFRA_SERVICES=(postgres prover caddy)
 [[ "$USE_ANVIL" == true ]] && INFRA_SERVICES+=(anvil)
