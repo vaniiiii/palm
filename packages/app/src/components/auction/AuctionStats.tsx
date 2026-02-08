@@ -112,7 +112,7 @@ export function AuctionStats({ auction, currentBlock }: AuctionStatsProps) {
         />
         <StatTile
           label="Implied FDV"
-          value={formatPrice(stats.impliedFDV)}
+          value={`${formatPrice(stats.impliedFDV)} ETH`}
           sub="fully diluted"
         />
         <StatTile

@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { parseUnits, encodeAbiParameters, type Address } from "viem";
 import { toQ96, toQ96Aligned } from "../utils/formatting";
+import { useToast } from "../components/Toast";
 
 // Factory ABI (minimal)
 const FACTORY_ABI = [
@@ -87,6 +88,7 @@ type Step = "config" | "approve" | "deploy" | "success";
 export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPageProps) {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
+  const { showToast } = useToast();
 
   // Form state
   const [tokenAddress, setTokenAddress] = useState("");
@@ -190,42 +192,45 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
     return `0x${mpsHex}${blocksHex}` as `0x${string}`;
   };
 
-  const handleMint = () => {
-    if (!tokenAddress || !address) return;
+  const handleMint = useCallback(async () => {
+    if (!tokenAddress || !address || !publicClient) return;
     const mintAmount = parseUnits("1000000", tokenDecimals);
-    writeMint({
-      address: tokenAddress as Address,
-      abi: ERC20_ABI,
-      functionName: "mint",
-      args: [address, mintAmount],
-    });
-  };
+    const args = { address: tokenAddress as Address, abi: ERC20_ABI, functionName: "mint" as const, args: [address, mintAmount] as const };
 
-  // Handle approval
-  const handleApprove = () => {
-    if (!factoryAddress || !auctionParams) return;
+    showToast("info", "Simulating mint...");
+    try {
+      await publicClient.simulateContract(args);
+    } catch (e: any) {
+      showToast("error", `Mint failed: ${e?.shortMessage || e?.message?.slice(0, 80) || "unknown error"}`);
+      return;
+    }
+    showToast("success", "Sending mint transaction...");
+    writeMint(args);
+  }, [tokenAddress, address, publicClient, tokenDecimals, writeMint, showToast]);
 
-    writeApprove({
-      address: tokenAddress as Address,
-      abi: ERC20_ABI,
-      functionName: "approve",
-      args: [factoryAddress, auctionParams.amount],
-    });
-  };
+  const handleApprove = useCallback(async () => {
+    if (!factoryAddress || !auctionParams || !publicClient || !address) return;
+    const args = { address: tokenAddress as Address, abi: ERC20_ABI, functionName: "approve" as const, args: [factoryAddress, auctionParams.amount] as const };
 
-  // Handle deploy
-  const handleDeploy = async () => {
+    showToast("info", "Simulating approval...");
+    try {
+      await publicClient.simulateContract({ ...args, account: address });
+    } catch (e: any) {
+      showToast("error", `Approve failed: ${e?.shortMessage || e?.message?.slice(0, 80) || "unknown error"}`);
+      return;
+    }
+    showToast("success", "Sending approve transaction...");
+    writeApprove(args);
+  }, [factoryAddress, auctionParams, tokenAddress, publicClient, address, writeApprove, showToast]);
+
+  const handleDeploy = useCallback(async () => {
     if (!factoryAddress || !auctionParams || !address || !publicClient) return;
 
-    // Get current block
     const currentBlock = await publicClient.getBlockNumber();
     const startBlock = currentBlock + 5n;
     const endBlock = startBlock + BigInt(auctionParams.duration);
     const claimBlock = endBlock + 100n;
 
-    // Encode config data
-    // For now, deploy WITHOUT validation hook (address(0))
-    // Users can deploy their own hook separately or we can add hook deployment
     const configData = encodeAbiParameters(
       [
         { name: "currency", type: "address" },
@@ -241,44 +246,57 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
         { name: "auctionStepsData", type: "bytes" },
       ],
       [
-        "0x0000000000000000000000000000000000000000" as Address, // ETH
+        "0x0000000000000000000000000000000000000000" as Address,
         address,
         address,
         startBlock,
         endBlock,
         claimBlock,
         auctionParams.tickSpacingQ96,
-        "0x0000000000000000000000000000000000000000" as Address, // No hook for now
+        "0x0000000000000000000000000000000000000000" as Address,
         auctionParams.floorPriceQ96,
         0n,
         encodeStepData(auctionParams.mpsPerBlock, auctionParams.duration),
       ]
     );
 
-    // Generate unique salt
     const salt = `0x${Date.now().toString(16).padStart(64, "0")}` as `0x${string}`;
-
-    writeDeploy({
+    const args = {
       address: factoryAddress,
       abi: FACTORY_ABI,
-      functionName: "initializeDistribution",
-      args: [tokenAddress as Address, auctionParams.amount, configData, salt],
-    });
-  };
+      functionName: "initializeDistribution" as const,
+      args: [tokenAddress as Address, auctionParams.amount, configData, salt] as const,
+    };
+
+    showToast("info", "Simulating deploy...");
+    try {
+      await publicClient.simulateContract({ ...args, account: address });
+    } catch (e: any) {
+      showToast("error", `Deploy failed: ${e?.shortMessage || e?.message?.slice(0, 80) || "unknown error"}`);
+      return;
+    }
+    showToast("success", "Sending deploy transaction...");
+    writeDeploy(args);
+  }, [factoryAddress, auctionParams, address, publicClient, tokenAddress, writeDeploy, showToast]);
 
   // Track step transitions
   useEffect(() => {
     if (isApproveSuccess && currentStep === "approve") {
+      showToast("success", "Tokens approved!");
       setCurrentStep("deploy");
     }
-  }, [isApproveSuccess, currentStep]);
+  }, [isApproveSuccess, currentStep, showToast]);
 
   useEffect(() => {
     if (isDeploySuccess && currentStep === "deploy" && deployHash) {
-      // In a real app, we'd get the auction address from the transaction receipt
+      showToast("success", "Auction deployed!");
       setCurrentStep("success");
     }
-  }, [isDeploySuccess, currentStep, deployHash]);
+  }, [isDeploySuccess, currentStep, deployHash, showToast]);
+
+  useEffect(() => {
+    if (isMintSuccess) showToast("success", "Minted 1M tokens!");
+  }, [isMintSuccess, showToast]);
 
   const isValidConfig = tokenAddress && tokenAmount && auctionParams && tokenBalance && tokenBalance >= auctionParams.amount;
 

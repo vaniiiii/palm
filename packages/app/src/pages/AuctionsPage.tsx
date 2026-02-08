@@ -9,10 +9,11 @@ import { fromQ96 } from "../utils/formatting";
 const formatFDV = (price: number, supply: bigint): string => {
   const fdv = price * Number(formatEther(supply));
   if (fdv === 0) return "—";
-  if (fdv < 1000) return `$${fdv.toFixed(0)}`;
-  if (fdv < 1000000) return `$${(fdv / 1000).toFixed(1)}K`;
-  if (fdv < 1000000000) return `$${(fdv / 1000000).toFixed(1)}M`;
-  return `$${(fdv / 1000000000).toFixed(2)}B`;
+  if (fdv < 0.01) return `${fdv.toFixed(4)} ETH`;
+  if (fdv < 1) return `${fdv.toFixed(3)} ETH`;
+  if (fdv < 1000) return `${fdv.toFixed(1)} ETH`;
+  if (fdv < 1000000) return `${(fdv / 1000).toFixed(1)}K ETH`;
+  return `${(fdv / 1000000).toFixed(1)}M ETH`;
 };
 
 const formatVolume = (value: bigint): string => {
