@@ -3,6 +3,9 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicCl
 import { parseUnits, encodeAbiParameters, type Address } from "viem";
 import { toQ96, toQ96Aligned } from "../utils/formatting";
 import { useToast } from "../components/Toast";
+import { getTokenMeta, KNOWN_TOKENS } from "../utils/tokens";
+
+type CurrencyOption = "eth" | "usdc" | "custom";
 
 // Factory ABI (minimal)
 const FACTORY_ABI = [
@@ -98,6 +101,8 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
   const [durationBlocks, setDurationBlocks] = useState("10000");
   const [enableKYC, setEnableKYC] = useState(true);
   const [kycProvider, setKycProvider] = useState<"echo" | "legion" | "both">("both");
+  const [currency, setCurrency] = useState<CurrencyOption>("eth");
+  const [customCurrencyAddress, setCustomCurrencyAddress] = useState("");
 
   // Token info
   const [tokenSymbol, setTokenSymbol] = useState<string | null>(null);
@@ -130,6 +135,14 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
 
   // Factory address from env
   const factoryAddress = import.meta.env.VITE_FACTORY_ADDRESS as Address | undefined;
+
+  const currencyAddress = useMemo(() => {
+    if (currency === "usdc") return KNOWN_TOKENS.USDC;
+    if (currency === "custom") return customCurrencyAddress || KNOWN_TOKENS.ETH;
+    return KNOWN_TOKENS.ETH;
+  }, [currency, customCurrencyAddress]);
+
+  const currencyMeta = useMemo(() => getTokenMeta(currencyAddress), [currencyAddress]);
 
   // Fetch token info when address changes
   const fetchTokenInfo = async () => {
@@ -246,7 +259,7 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
         { name: "auctionStepsData", type: "bytes" },
       ],
       [
-        "0x0000000000000000000000000000000000000000" as Address,
+        currencyAddress as Address,
         address,
         address,
         startBlock,
@@ -277,7 +290,7 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
     }
     showToast("success", "Sending deploy transaction...");
     writeDeploy(args);
-  }, [factoryAddress, auctionParams, address, publicClient, tokenAddress, writeDeploy, showToast]);
+  }, [factoryAddress, auctionParams, address, publicClient, tokenAddress, currencyAddress, writeDeploy, showToast]);
 
   // Track step transitions
   useEffect(() => {
@@ -412,11 +425,47 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
               />
             </div>
 
+            {/* Bid currency */}
+            <div className="mb-5">
+              <label className="text-palm-text-3 text-[10px] uppercase tracking-widest block mb-2">
+                Bid Currency
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  { id: "eth" as const, label: "ETH", logo: "/logos/eth.svg" },
+                  { id: "usdc" as const, label: "USDC", logo: "/logos/usdc.svg" },
+                  { id: "custom" as const, label: "Custom", logo: null },
+                ]).map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setCurrency(opt.id)}
+                    className={`flex items-center gap-2 px-4 py-2 text-xs font-medium border transition-colors ${
+                      currency === opt.id
+                        ? "border-palm-cyan text-palm-cyan bg-palm-cyan/10"
+                        : "border-palm-border text-palm-text-3 hover:border-palm-text-3"
+                    }`}
+                  >
+                    {opt.logo && <img src={opt.logo} alt={opt.label} className="w-4 h-4" />}
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {currency === "custom" && (
+                <input
+                  type="text"
+                  value={customCurrencyAddress}
+                  onChange={(e) => setCustomCurrencyAddress(e.target.value)}
+                  placeholder="0x... ERC20 address"
+                  className="mt-2 w-full bg-palm-bg-secondary border border-palm-border px-4 py-3 text-palm-text font-mono text-sm"
+                />
+              )}
+            </div>
+
             {/* Price settings */}
             <div className="grid grid-cols-2 gap-4 mb-5">
               <div>
                 <label className="text-palm-text-3 text-[10px] uppercase tracking-widest block mb-2">
-                  Floor Price (ETH)
+                  Floor Price ({currencyMeta.symbol})
                 </label>
                 <input
                   type="text"
@@ -428,7 +477,7 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
               </div>
               <div>
                 <label className="text-palm-text-3 text-[10px] uppercase tracking-widest block mb-2">
-                  Tick Spacing (ETH)
+                  Tick Spacing ({currencyMeta.symbol})
                 </label>
                 <input
                   type="text"
@@ -478,23 +527,32 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
                 <label className="text-palm-text-3 text-[10px] uppercase tracking-widest block mb-2">
                   KYC Providers
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {(["echo", "legion", "both"] as const).map((p) => {
                     const label = p === "both" ? "Both" : p === "echo" ? "Echo Sonar" : "Veriff";
+                    const logo = p === "echo" ? "/logos/echo-logo.svg" : p === "legion" ? "/logos/veriff-logo.svg" : null;
                     return (
                       <button
                         key={p}
                         onClick={() => setKycProvider(p)}
-                        className={`px-4 py-2 text-xs font-medium border transition-colors ${
+                        className={`flex items-center gap-2 px-4 py-2 text-xs font-medium border transition-colors ${
                           kycProvider === p
                             ? "border-palm-cyan text-palm-cyan bg-palm-cyan/10"
                             : "border-palm-border text-palm-text-3 hover:border-palm-text-3"
                         }`}
                       >
+                        {logo && <img src={logo} alt={label} className="w-4 h-4 object-contain" />}
                         {label}
                       </button>
                     );
                   })}
+                  <button
+                    disabled
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-medium border border-palm-border/50 text-palm-text-3/50 cursor-not-allowed"
+                  >
+                    <img src="/logos/sumsub-logo.svg" alt="Sumsub" className="w-4 h-4 object-contain" />
+                    Sumsub <span className="text-[9px] uppercase tracking-wider ml-1 text-palm-cyan/60">Soon</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -517,12 +575,16 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
                   value={tokenAmount ? `${parseFloat(tokenAmount).toLocaleString()} tokens` : "—"}
                 />
                 <SummaryRow
+                  label="Currency"
+                  value={currencyMeta.symbol}
+                />
+                <SummaryRow
                   label="Floor Price"
-                  value={floorPrice ? `${floorPrice} ETH` : "—"}
+                  value={floorPrice ? `${floorPrice} ${currencyMeta.symbol}` : "—"}
                 />
                 <SummaryRow
                   label="Tick Spacing"
-                  value={tickSpacing ? `${tickSpacing} ETH` : "—"}
+                  value={tickSpacing ? `${tickSpacing} ${currencyMeta.symbol}` : "—"}
                 />
                 <SummaryRow
                   label="Duration"

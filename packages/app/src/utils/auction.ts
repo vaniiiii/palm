@@ -33,6 +33,7 @@ export function getAuctionPhase({
 export const PROVIDERS = {
   ECHO: 0,
   LEGION: 1,
+  SUMSUB: 2,
 } as const;
 
 export type ProviderType = (typeof PROVIDERS)[keyof typeof PROVIDERS];
@@ -43,6 +44,8 @@ export function getProviderName(provider: number): string {
       return "Echo Sonar";
     case PROVIDERS.LEGION:
       return "Veriff";
+    case PROVIDERS.SUMSUB:
+      return "Sumsub";
     default:
       return `Provider #${provider}`;
   }

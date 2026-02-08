@@ -146,20 +146,25 @@ export default function AuctionDetailPage({
         />
       </div>
 
-      <div className="flex gap-3 mb-8">
+      <div className="flex gap-3 mb-8 flex-wrap">
         {PROVIDERS.map((p) => {
-          const enabled = p.id === 0 ? echoEnabled : legionEnabled;
+          const enabled = p.comingSoon ? false : p.id === 0 ? echoEnabled : legionEnabled;
           return (
             <div
               key={p.id}
               className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium border ${
-                enabled
+                p.comingSoon
+                  ? "border-palm-border/50 text-palm-text-3/60 bg-palm-bg-secondary/50"
+                  : enabled
                   ? "border-palm-green/30 text-palm-green bg-palm-green/5"
                   : "border-palm-border text-palm-text-3 bg-palm-bg-secondary"
               }`}
             >
               <img src={p.logo} alt={p.name} className="w-4 h-4 object-contain" />
               {p.name}
+              {p.comingSoon && (
+                <span className="text-[9px] uppercase tracking-wider opacity-60">Soon</span>
+              )}
             </div>
           );
         })}
@@ -362,11 +367,11 @@ function ProviderManager({ hookAddress }: { hookAddress: Address }) {
         </thead>
         <tbody>
           {PROVIDERS.map((p) => {
-            const enabled = p.id === 0 ? echoEnabled : legionEnabled;
+            const enabled = p.comingSoon ? false : p.id === 0 ? echoEnabled : legionEnabled;
             return (
               <tr
                 key={p.id}
-                className="border-b border-palm-border/20 hover:bg-palm-bg-secondary/30 transition-colors"
+                className={`border-b border-palm-border/20 hover:bg-palm-bg-secondary/30 transition-colors ${p.comingSoon ? "opacity-50" : ""}`}
               >
                 <td className="py-3 text-sm text-palm-text">
                   <span className="flex items-center gap-2">
@@ -378,17 +383,23 @@ function ProviderManager({ hookAddress }: { hookAddress: Address }) {
                   {p.domain}
                 </td>
                 <td className="py-3 text-right">
-                  <button
-                    onClick={() => toggle(p.id, !!enabled)}
-                    disabled={busy}
-                    className={`text-xs font-medium px-3 py-1 transition-colors disabled:opacity-40 ${
-                      enabled
-                        ? "text-palm-green bg-palm-green/10 hover:bg-palm-pink/10 hover:text-palm-pink"
-                        : "text-palm-text-3 bg-palm-bg-secondary hover:bg-palm-cyan/10 hover:text-palm-cyan"
-                    }`}
-                  >
-                    {enabled ? "ENABLED" : "DISABLED"}
-                  </button>
+                  {p.comingSoon ? (
+                    <span className="text-xs font-medium px-3 py-1 text-palm-cyan">
+                      COMING SOON
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => toggle(p.id, !!enabled)}
+                      disabled={busy}
+                      className={`text-xs font-medium px-3 py-1 transition-colors disabled:opacity-40 ${
+                        enabled
+                          ? "text-palm-green bg-palm-green/10 hover:bg-palm-pink/10 hover:text-palm-pink"
+                          : "text-palm-text-3 bg-palm-bg-secondary hover:bg-palm-cyan/10 hover:text-palm-cyan"
+                      }`}
+                    >
+                      {enabled ? "ENABLED" : "DISABLED"}
+                    </button>
+                  )}
                 </td>
               </tr>
             );
@@ -485,24 +496,26 @@ function ProviderSelector({
   const { data: echoEnabled } = useEnabledProvider(hookAddress, 0);
   const { data: legionEnabled } = useEnabledProvider(hookAddress, 1);
 
-  const providers = [
-    { ...PROVIDERS[0], enabled: echoEnabled },
-    { ...PROVIDERS[1], enabled: legionEnabled },
-  ];
+  const providers = PROVIDERS.map((p) => ({
+    ...p,
+    enabled: p.comingSoon ? false : p.id === 0 ? echoEnabled : legionEnabled,
+  }));
 
   return (
     <div>
       <h3 className="text-sm text-palm-text-2 mb-4">
         Select a KYC provider to verify your identity
       </h3>
-      <div className="grid grid-cols-2 gap-px bg-palm-border">
+      <div className="grid grid-cols-3 gap-px bg-palm-border">
         {providers.map((p) => (
           <button
             key={p.id}
-            onClick={() => p.enabled && onSelect(p.id)}
-            disabled={!p.enabled}
+            onClick={() => p.enabled && !p.comingSoon && onSelect(p.id)}
+            disabled={!p.enabled || p.comingSoon}
             className={`bg-palm-bg-secondary p-6 text-left transition-colors ${
-              p.enabled
+              p.comingSoon
+                ? "opacity-40 cursor-not-allowed"
+                : p.enabled
                 ? "hover:bg-[#353535] cursor-pointer"
                 : "opacity-40 cursor-not-allowed"
             }`}
@@ -512,7 +525,11 @@ function ProviderSelector({
                 <img src={p.logo} alt={p.name} className="w-5 h-5 object-contain" />
                 {p.name}
               </span>
-              {p.enabled ? (
+              {p.comingSoon ? (
+                <span className="text-palm-cyan text-[10px] font-medium uppercase tracking-wider">
+                  Coming Soon
+                </span>
+              ) : p.enabled ? (
                 <span className="text-palm-green text-[10px] font-medium uppercase tracking-wider">
                   Available
                 </span>

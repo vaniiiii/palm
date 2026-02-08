@@ -6,6 +6,7 @@ import { useAuctions, type IndexedAuction } from "../hooks/useIndexer";
 import { requiresKYC } from "../utils/auction";
 import { fromQ96 } from "../utils/formatting";
 import { getTokenMeta } from "../utils/tokens";
+import { generateTokenAvatar } from "../utils/token-avatar";
 
 const formatFDV = (price: number, supply: bigint, symbol: string): string => {
   const fdv = price * Number(formatEther(supply));
@@ -197,7 +198,8 @@ function AuctionRow({
   const clearingPrice = fromQ96(auction.lastClearingPriceQ96);
   const totalSupply = BigInt(auction.totalSupply || "0");
   const committed = BigInt(auction.currencyRaised || "0");
-  const currencySymbol = getTokenMeta(auction.currency).symbol;
+  const tokenMeta = getTokenMeta(auction.currency);
+  const tokenAvatar = useMemo(() => generateTokenAvatar(auction.token), [auction.token]);
 
   const timeInfo = useMemo(() => {
     if (!currentBlock || auction.startBlock === 0 || auction.endBlock === 0) {
@@ -252,9 +254,7 @@ function AuctionRow({
       </div>
 
       <div className="col-span-4 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-palm-border flex items-center justify-center text-palm-text-3 text-xs font-mono">
-          {auction.token.slice(2, 4).toUpperCase()}
-        </div>
+        <img src={tokenAvatar} alt="" className="w-8 h-8 rounded-full shrink-0" />
         <div>
           <div className="flex items-center gap-2">
             <span className="text-palm-text text-sm font-medium group-hover:text-palm-cyan transition-colors">
@@ -270,12 +270,14 @@ function AuctionRow({
         </div>
       </div>
 
-      <div className="col-span-2 text-right text-palm-text text-sm">
-        {formatFDV(clearingPrice, totalSupply, currencySymbol)}
+      <div className="col-span-2 flex items-center justify-end gap-1.5 text-palm-text text-sm">
+        {tokenMeta.logo && <img src={tokenMeta.logo} alt={tokenMeta.symbol} className="w-4 h-4" />}
+        {formatFDV(clearingPrice, totalSupply, tokenMeta.symbol)}
       </div>
 
-      <div className="col-span-2 text-right text-palm-text text-sm">
-        {formatVolume(committed, currencySymbol)}
+      <div className="col-span-2 flex items-center justify-end gap-1.5 text-palm-text text-sm">
+        {tokenMeta.logo && <img src={tokenMeta.logo} alt={tokenMeta.symbol} className="w-4 h-4" />}
+        {formatVolume(committed, tokenMeta.symbol)}
       </div>
 
       <div className="col-span-3 flex flex-col items-end gap-1">
@@ -322,7 +324,8 @@ function AuctionCard({
   const clearingPrice = fromQ96(auction.lastClearingPriceQ96);
   const totalSupply = BigInt(auction.totalSupply || "0");
   const committed = BigInt(auction.currencyRaised || "0");
-  const currencySymbol = getTokenMeta(auction.currency).symbol;
+  const tokenMeta = getTokenMeta(auction.currency);
+  const tokenAvatar = useMemo(() => generateTokenAvatar(auction.token), [auction.token]);
 
   const timeInfo = useMemo(() => {
     if (!currentBlock || auction.startBlock === 0 || auction.endBlock === 0) {
@@ -374,9 +377,7 @@ function AuctionCard({
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-palm-border flex items-center justify-center text-palm-text-3 text-sm font-mono">
-            {auction.token.slice(2, 4).toUpperCase()}
-          </div>
+          <img src={tokenAvatar} alt="" className="w-10 h-10 rounded-full shrink-0" />
           <div>
             <div className="flex items-center gap-2">
               <span className="text-palm-text font-medium">
@@ -421,11 +422,17 @@ function AuctionCard({
       <div className="flex items-center justify-between text-sm">
         <div>
           <div className="text-palm-text-3 text-[10px] uppercase">FDV</div>
-          <div className="text-palm-text">{formatFDV(clearingPrice, totalSupply, currencySymbol)}</div>
+          <div className="flex items-center gap-1 text-palm-text">
+            {tokenMeta.logo && <img src={tokenMeta.logo} alt={tokenMeta.symbol} className="w-3.5 h-3.5" />}
+            {formatFDV(clearingPrice, totalSupply, tokenMeta.symbol)}
+          </div>
         </div>
         <div className="text-right">
           <div className="text-palm-text-3 text-[10px] uppercase">Committed</div>
-          <div className="text-palm-text">{formatVolume(committed, currencySymbol)}</div>
+          <div className="flex items-center justify-end gap-1 text-palm-text">
+            {tokenMeta.logo && <img src={tokenMeta.logo} alt={tokenMeta.symbol} className="w-3.5 h-3.5" />}
+            {formatVolume(committed, tokenMeta.symbol)}
+          </div>
         </div>
       </div>
     </div>
