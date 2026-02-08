@@ -7,24 +7,27 @@ export interface ChainConfig {
 
 const CCA_FACTORY = "0xCCccCcCAE7503Cac057829BF2811De42E16e0bD5" as const;
 
+function indexerUrl(envVar: string | undefined, fallback = ""): string {
+  if (!envVar) return fallback;
+  return envVar.endsWith("/graphql") ? envVar : `${envVar}/graphql`;
+}
+
 export const CHAIN_CONFIG: Record<number, ChainConfig> = {
   [base.id]: {
     factory: CCA_FACTORY,
-    indexerUrl: import.meta.env.VITE_BASE_INDEXER_URL || "",
+    indexerUrl: indexerUrl(import.meta.env.VITE_BASE_INDEXER_URL),
   },
   [arbitrum.id]: {
     factory: CCA_FACTORY,
-    indexerUrl: import.meta.env.VITE_ARB_INDEXER_URL || "",
+    indexerUrl: indexerUrl(import.meta.env.VITE_ARB_INDEXER_URL),
   },
   [sepolia.id]: {
     factory: CCA_FACTORY,
-    indexerUrl: import.meta.env.VITE_SEPOLIA_INDEXER_URL || "",
+    indexerUrl: indexerUrl(import.meta.env.VITE_SEPOLIA_INDEXER_URL),
   },
   [anvil.id]: {
     factory: (import.meta.env.VITE_FACTORY_ADDRESS || CCA_FACTORY) as `0x${string}`,
-    indexerUrl: import.meta.env.VITE_INDEXER_URL
-      ? `${import.meta.env.VITE_INDEXER_URL}/graphql`
-      : "/indexer/graphql",
+    indexerUrl: indexerUrl(import.meta.env.VITE_INDEXER_URL, "/indexer/graphql"),
   },
 };
 
