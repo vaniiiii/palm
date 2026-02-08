@@ -1,4 +1,4 @@
-import { createConfig, factory } from 'ponder';
+import { createConfig, factory, rateLimit } from 'ponder';
 import { Auction as AuctionABI } from './abis/Auction';
 import { Factory as FactoryABI } from './abis/Factory';
 import { parseAbiItem, http } from 'viem';
@@ -9,13 +9,19 @@ if (!process.env.RPC_URL || !process.env.FACTORY_ADDRESS) {
 
 const chainId = Number(process.env.CHAIN_ID || '31337');
 const startBlock = Number(process.env.START_BLOCK || '0');
+const isLocal = chainId === 31337;
+const rps = Number(process.env.RPC_MAX_RPS || (isLocal ? 50 : 5));
+
+const transport = isLocal
+  ? http(process.env.RPC_URL as string)
+  : rateLimit(http(process.env.RPC_URL as string), { requestsPerSecond: rps, browser: false });
 
 export default createConfig({
   chains: {
     local: {
       id: chainId,
-      rpc: http(process.env.RPC_URL as string),
-      disableCache: true,
+      rpc: transport,
+      disableCache: isLocal,
     },
   },
   contracts: {
