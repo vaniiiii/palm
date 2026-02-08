@@ -2,7 +2,11 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+
+# Save caller env before sourcing .env
+_ENABLE_KYC="${ENABLE_KYC:-}"
 source .env
+[[ -n "$_ENABLE_KYC" ]] && ENABLE_KYC="$_ENABLE_KYC"
 
 # Parse flags
 USE_ANVIL=true
