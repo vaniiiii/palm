@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient, useChainId } from "wagmi";
 import { parseUnits, encodeAbiParameters, type Address } from "viem";
 import { toQ96, toQ96Aligned } from "../utils/formatting";
 import { useToast } from "../components/Toast";
-import { getTokenMeta, KNOWN_TOKENS } from "../utils/tokens";
+import { getTokenMeta, KNOWN_TOKENS, getUSDCAddress } from "../utils/tokens";
+import { getChainConfig } from "../config/chains";
 
 type CurrencyOption = "eth" | "usdc" | "custom";
 
@@ -90,8 +91,10 @@ type Step = "config" | "approve" | "deploy" | "success";
 
 export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPageProps) {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   const publicClient = usePublicClient();
   const { showToast } = useToast();
+  const chainConfig = getChainConfig(chainId);
 
   // Form state
   const [tokenAddress, setTokenAddress] = useState("");
@@ -133,14 +136,13 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
     if (isMintSuccess) fetchTokenInfo();
   }, [isMintSuccess]);
 
-  // Factory address from env
-  const factoryAddress = import.meta.env.VITE_FACTORY_ADDRESS as Address | undefined;
+  const factoryAddress = chainConfig?.factory as Address | undefined;
 
   const currencyAddress = useMemo(() => {
-    if (currency === "usdc") return KNOWN_TOKENS.USDC;
+    if (currency === "usdc") return getUSDCAddress(chainId) || KNOWN_TOKENS.USDC;
     if (currency === "custom") return customCurrencyAddress || KNOWN_TOKENS.ETH;
     return KNOWN_TOKENS.ETH;
-  }, [currency, customCurrencyAddress]);
+  }, [currency, customCurrencyAddress, chainId]);
 
   const currencyMeta = useMemo(() => getTokenMeta(currencyAddress), [currencyAddress]);
 
@@ -347,9 +349,9 @@ export default function LaunchAuctionPage({ onBack, onSuccess }: LaunchAuctionPa
       ) : !factoryAddress ? (
         <div className="clip-corner-both bg-black p-12 text-center">
           <div className="text-palm-pink text-3xl mb-4">&#9888;</div>
-          <p className="text-palm-text-2 text-sm">Factory address not configured</p>
+          <p className="text-palm-text-2 text-sm">Unsupported network</p>
           <p className="text-palm-text-3 text-xs mt-2">
-            Set VITE_FACTORY_ADDRESS in your environment
+            Switch to Base, Arbitrum, or a configured network
           </p>
         </div>
       ) : currentStep === "success" ? (

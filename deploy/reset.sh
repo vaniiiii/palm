@@ -2,40 +2,138 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+source .env
 
+# Parse flags
+USE_ANVIL=true
+USE_BASE=false
+USE_ARB=false
 KYC_MODE="${ENABLE_KYC:-false}"
-echo "Mode: KYC=$KYC_MODE"
+
+for arg in "$@"; do
+    case "$arg" in
+        --no-anvil) USE_ANVIL=false ;;
+        --with-base) USE_BASE=true ;;
+        --with-arb) USE_ARB=true ;;
+        *) echo "Unknown flag: $arg"; exit 1 ;;
+    esac
+done
+
+PROFILES=()
+[[ "$USE_ANVIL" == true ]] && PROFILES+=(--profile anvil)
+[[ "$USE_BASE" == true ]] && PROFILES+=(--profile base)
+[[ "$USE_ARB" == true ]] && PROFILES+=(--profile arbitrum)
+
+echo "Chains: anvil=$USE_ANVIL base=$USE_BASE arb=$USE_ARB kyc=$KYC_MODE"
+
+# Generate Caddyfile based on active chains
+generate_caddyfile() {
+    cat <<'EOF'
+{$API_DOMAIN} {
+	reverse_proxy prover:3001
+}
+EOF
+
+    if [[ "$USE_ANVIL" == true ]]; then
+        cat <<'EOF'
+
+{$ANVIL_INDEXER_DOMAIN} {
+	reverse_proxy indexer:42069
+}
+
+{$ANVIL_RPC_DOMAIN} {
+	reverse_proxy anvil:8545
+}
+EOF
+    fi
+
+    if [[ "$USE_BASE" == true ]]; then
+        cat <<'EOF'
+
+{$BASE_INDEXER_DOMAIN} {
+	reverse_proxy indexer-base:42069
+}
+EOF
+    fi
+
+    if [[ "$USE_ARB" == true ]]; then
+        cat <<'EOF'
+
+{$ARB_INDEXER_DOMAIN} {
+	reverse_proxy indexer-arb:42069
+}
+EOF
+    fi
+}
+
+echo "Generating Caddyfile..."
+generate_caddyfile > Caddyfile
 
 echo "Stopping all containers..."
-docker compose --profile anvil down -v
+docker compose --profile anvil --profile base --profile arbitrum down -v
 
-echo "Starting anvil + postgres + prover + caddy..."
-docker compose --profile anvil up -d anvil postgres prover caddy
+echo "Starting infra..."
+INFRA_SERVICES=(postgres prover caddy)
+[[ "$USE_ANVIL" == true ]] && INFRA_SERVICES+=(anvil)
+docker compose "${PROFILES[@]}" up -d "${INFRA_SERVICES[@]}"
 
-echo "Waiting for anvil..."
-sleep 3
+if [[ "$USE_ANVIL" == true ]]; then
+    echo "Waiting for anvil..."
+    sleep 3
+fi
 
-echo "Deploying contracts..."
-OUTPUT=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh)
-echo "$OUTPUT"
+update_env() {
+    local prefix="$1"
+    local output="$2"
 
-FACTORY=$(echo "$OUTPUT" | grep "FACTORY_ADDRESS=" | cut -d= -f2)
-AUCTION=$(echo "$OUTPUT" | grep "AUCTION_ADDRESS=" | cut -d= -f2)
-HOOK=$(echo "$OUTPUT" | grep "HOOK_ADDRESS=" | cut -d= -f2)
-TOKEN=$(echo "$OUTPUT" | grep "TOKEN_ADDRESS=" | cut -d= -f2)
+    local factory=$(echo "$output" | grep "FACTORY_ADDRESS=" | cut -d= -f2)
+    local auction=$(echo "$output" | grep "AUCTION_ADDRESS=" | cut -d= -f2)
+    local hook=$(echo "$output" | grep "HOOK_ADDRESS=" | cut -d= -f2)
+    local token=$(echo "$output" | grep "TOKEN_ADDRESS=" | cut -d= -f2)
 
-echo "Updating .env..."
-sed -i "s/FACTORY_ADDRESS=.*/FACTORY_ADDRESS=$FACTORY/" .env
-sed -i "s/AUCTION_ADDRESS=.*/AUCTION_ADDRESS=$AUCTION/" .env
-sed -i "s/HOOK_ADDRESS=.*/HOOK_ADDRESS=$HOOK/" .env
-sed -i "s/TOKEN_ADDRESS=.*/TOKEN_ADDRESS=$TOKEN/" .env
+    local tmp=".env.tmp.$$"
+    sed "s|${prefix}_FACTORY_ADDRESS=.*|${prefix}_FACTORY_ADDRESS=$factory|
+         s|${prefix}_AUCTION_ADDRESS=.*|${prefix}_AUCTION_ADDRESS=$auction|
+         s|${prefix}_HOOK_ADDRESS=.*|${prefix}_HOOK_ADDRESS=$hook|
+         s|${prefix}_TOKEN_ADDRESS=.*|${prefix}_TOKEN_ADDRESS=$token|" .env > "$tmp" && mv "$tmp" .env
+}
 
-echo "Starting indexer..."
-docker compose --profile anvil up -d indexer
+if [[ "$USE_ANVIL" == true ]]; then
+    echo "Deploying contracts on anvil..."
+    OUTPUT=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh anvil)
+    echo "$OUTPUT"
+    update_env "ANVIL" "$OUTPUT"
+fi
+
+if [[ "$USE_BASE" == true ]]; then
+    echo "Deploying contracts on base..."
+    OUTPUT=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh base)
+    echo "$OUTPUT"
+    update_env "BASE" "$OUTPUT"
+fi
+
+if [[ "$USE_ARB" == true ]]; then
+    echo "Deploying contracts on arbitrum..."
+    OUTPUT=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh arbitrum)
+    echo "$OUTPUT"
+    update_env "ARB" "$OUTPUT"
+fi
+
+echo "Reloading env after deploy..."
+source .env
+
+echo "Starting indexers..."
+INDEXER_SERVICES=()
+[[ "$USE_ANVIL" == true ]] && INDEXER_SERVICES+=(indexer)
+[[ "$USE_BASE" == true ]] && INDEXER_SERVICES+=(indexer-base)
+[[ "$USE_ARB" == true ]] && INDEXER_SERVICES+=(indexer-arb)
+
+if [[ ${#INDEXER_SERVICES[@]} -gt 0 ]]; then
+    docker compose "${PROFILES[@]}" up -d "${INDEXER_SERVICES[@]}"
+fi
 
 echo ""
-echo "Done. KYC=$KYC_MODE"
-echo "  FACTORY=$FACTORY"
-echo "  AUCTION=$AUCTION"
-echo "  HOOK=$HOOK"
-echo "  TOKEN=$TOKEN"
+echo "Done."
+[[ "$USE_ANVIL" == true ]] && echo "  Anvil indexer: https://${ANVIL_INDEXER_DOMAIN:-}"
+[[ "$USE_BASE" == true ]] && echo "  Base indexer: https://${BASE_INDEXER_DOMAIN:-}"
+[[ "$USE_ARB" == true ]] && echo "  Arb indexer: https://${ARB_INDEXER_DOMAIN:-}"

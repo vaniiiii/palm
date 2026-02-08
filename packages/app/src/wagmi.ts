@@ -1,6 +1,6 @@
 import { http, createConfig } from "wagmi";
 import type { Chain } from "viem";
-import { mainnet, sepolia, anvil } from "wagmi/chains";
+import { mainnet, sepolia, anvil, base, arbitrum } from "wagmi/chains";
 import { connectorsForWallets } from "@rainbow-me/rainbowkit";
 import {
   rabbyWallet,
@@ -12,7 +12,6 @@ import {
 
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "palm-dev";
 
-// Custom chain support (for Tenderly virtual testnets, custom networks, etc.)
 const customChainId = import.meta.env.VITE_CHAIN_ID ? Number(import.meta.env.VITE_CHAIN_ID) : null;
 const customRpcUrl = import.meta.env.VITE_RPC_URL;
 const customChainName = import.meta.env.VITE_CHAIN_NAME || "Custom Network";
@@ -29,13 +28,14 @@ const customChain: Chain | null = customChainId && customRpcUrl ? {
   } : undefined,
 } : null;
 
-// Build chains array - custom chain first if defined, then standard chains
+const standardChains = [base, arbitrum, sepolia, anvil, mainnet] as const;
 const chains: readonly [Chain, ...Chain[]] = customChain
-  ? [customChain, anvil, sepolia, mainnet]
-  : [anvil, sepolia, mainnet];
+  ? [customChain, ...standardChains]
+  : [base, ...standardChains.slice(1)];
 
-// Build transports - use custom RPC for matching chain IDs
 const transports: Record<number, ReturnType<typeof http>> = {
+  [base.id]: http(import.meta.env.VITE_BASE_RPC_URL),
+  [arbitrum.id]: http(import.meta.env.VITE_ARB_RPC_URL),
   [anvil.id]: http(import.meta.env.VITE_ANVIL_RPC_URL),
   [sepolia.id]: http(import.meta.env.VITE_SEPOLIA_RPC_URL),
   [mainnet.id]: http(import.meta.env.VITE_MAINNET_RPC_URL),
@@ -70,10 +70,8 @@ export const config = createConfig({
   transports,
 });
 
-// Helper to check if we're on a local/test network (for dev features like faucet)
 export const isLocalNetwork = (chainId: number | undefined): boolean => {
   if (!chainId) return false;
-  // Anvil default chain ID, or any chain ID < 1000 is likely local
   return chainId === anvil.id || chainId < 1000;
 };
 

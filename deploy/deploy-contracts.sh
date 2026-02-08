@@ -1,33 +1,62 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cd "$(dirname "$0")"
 source .env
 
-# Use localhost for RPC when deploying from host (anvil:8545 only works inside docker)
-DEPLOY_RPC_URL="${DEPLOY_RPC_URL:-http://localhost:8545}"
-
-CCA_DIR="${CCA_DIR:-/opt/continuous-clearing-auction}"
+CHAIN="${1:-anvil}"
 PALM_DIR="${PALM_DIR:-/opt/palm}"
 
-if [[ ! -d "$CCA_DIR" ]]; then
-    git clone https://github.com/Uniswap/continuous-clearing-auction "$CCA_DIR"
-    cd "$CCA_DIR" && git submodule update --init --recursive
+case "$CHAIN" in
+    anvil)
+        RPC_URL="${DEPLOY_RPC_URL:-http://localhost:8545}"
+        PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
+        FACTORY="${ANVIL_FACTORY_ADDRESS:-}"
+        ;;
+    base)
+        RPC_URL="$BASE_RPC_URL"
+        PRIVATE_KEY="${BASE_DEPLOYER_KEY:-$DEPLOYER_PRIVATE_KEY}"
+        FACTORY="$BASE_FACTORY_ADDRESS"
+        ;;
+    arbitrum)
+        RPC_URL="$ARB_RPC_URL"
+        PRIVATE_KEY="${ARB_DEPLOYER_KEY:-$DEPLOYER_PRIVATE_KEY}"
+        FACTORY="$ARB_FACTORY_ADDRESS"
+        ;;
+    *)
+        echo "Unknown chain: $CHAIN (expected: anvil, base, arbitrum)"
+        exit 1
+        ;;
+esac
+
+if [[ "$CHAIN" == "anvil" && -z "$FACTORY" ]]; then
+    CCA_DIR="${CCA_DIR:-/opt/continuous-clearing-auction}"
+
+    if [[ ! -d "$CCA_DIR" ]]; then
+        git clone https://github.com/Uniswap/continuous-clearing-auction "$CCA_DIR"
+        (cd "$CCA_DIR" && git submodule update --init --recursive)
+    fi
+
+    echo "Deploying CCA Factory on anvil..."
+    FACTORY_OUTPUT=$(cd "$CCA_DIR" && forge create src/ContinuousClearingAuctionFactory.sol:ContinuousClearingAuctionFactory \
+        --rpc-url "$RPC_URL" \
+        --private-key "$PRIVATE_KEY" \
+        --broadcast 2>&1)
+
+    FACTORY=$(echo "$FACTORY_OUTPUT" | grep -oE 'Deployed to: 0x[a-fA-F0-9]+' | cut -d' ' -f3)
+    echo "Factory: $FACTORY"
 fi
 
-echo "Deploying CCA Factory..."
-FACTORY_OUTPUT=$(cd "$CCA_DIR" && forge create src/ContinuousClearingAuctionFactory.sol:ContinuousClearingAuctionFactory \
-    --rpc-url "$DEPLOY_RPC_URL" \
-    --private-key "$DEPLOYER_PRIVATE_KEY" \
-    --broadcast 2>&1)
+if [[ -z "$FACTORY" ]]; then
+    echo "Error: no factory address for chain=$CHAIN"
+    exit 1
+fi
 
-FACTORY=$(echo "$FACTORY_OUTPUT" | grep -oE 'Deployed to: 0x[a-fA-F0-9]+' | cut -d' ' -f3)
-echo "Factory: $FACTORY"
-
-echo "Deploying Palm contracts..."
+echo "Deploying Palm contracts on $CHAIN..."
 DEPLOY_OUTPUT=$(cd "$PALM_DIR/packages/contracts" && \
-    FACTORY="$FACTORY" PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY" ENABLE_KYC="${ENABLE_KYC:-false}" \
+    FACTORY="$FACTORY" PRIVATE_KEY="$PRIVATE_KEY" ENABLE_KYC="${ENABLE_KYC:-false}" \
     forge script script/Deploy.s.sol:Deploy \
-        --rpc-url "$DEPLOY_RPC_URL" \
+        --rpc-url "$RPC_URL" \
         --broadcast \
         -v 2>&1)
 
@@ -36,10 +65,8 @@ HOOK=$(echo "$DEPLOY_OUTPUT" | grep -oE 'HOOK=[^ ]+' | cut -d= -f2 | head -1)
 TOKEN=$(echo "$DEPLOY_OUTPUT" | grep -oE 'TOKEN=[^ ]+' | cut -d= -f2 | head -1)
 
 echo ""
-echo "Deployed:"
+echo "Deployed on $CHAIN:"
 echo "  FACTORY_ADDRESS=$FACTORY"
 echo "  AUCTION_ADDRESS=$AUCTION"
 echo "  HOOK_ADDRESS=$HOOK"
 echo "  TOKEN_ADDRESS=$TOKEN"
-echo ""
-echo "Update deploy/.env with these addresses, then restart: docker compose up -d"

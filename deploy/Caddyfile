@@ -2,10 +2,18 @@
 	reverse_proxy prover:3001
 }
 
-{$INDEXER_DOMAIN} {
+{$ANVIL_INDEXER_DOMAIN} {
 	reverse_proxy indexer:42069
 }
 
-{$RPC_DOMAIN} {
+{$ANVIL_RPC_DOMAIN} {
 	reverse_proxy anvil:8545
+}
+
+{$BASE_INDEXER_DOMAIN} {
+	reverse_proxy indexer-base:42069
+}
+
+{$ARB_INDEXER_DOMAIN} {
+	reverse_proxy indexer-arb:42069
 }

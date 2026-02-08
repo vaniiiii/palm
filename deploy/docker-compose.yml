@@ -21,12 +21,47 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.indexer
+    profiles: [anvil]
     environment:
-      - RPC_URL=${RPC_URL}
-      - FACTORY_ADDRESS=${FACTORY_ADDRESS}
-      - CHAIN_ID=${CHAIN_ID}
-      - START_BLOCK=${START_BLOCK:-0}
-      - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder
+      - RPC_URL=${ANVIL_RPC_URL}
+      - FACTORY_ADDRESS=${ANVIL_FACTORY_ADDRESS}
+      - CHAIN_ID=${ANVIL_CHAIN_ID}
+      - START_BLOCK=${ANVIL_START_BLOCK:-0}
+      - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder_anvil
+      - DATABASE_SCHEMA=public
+    expose:
+      - "42069"
+    depends_on:
+      - postgres
+
+  indexer-base:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.indexer
+    profiles: [base]
+    environment:
+      - RPC_URL=${BASE_RPC_URL}
+      - FACTORY_ADDRESS=${BASE_FACTORY_ADDRESS}
+      - CHAIN_ID=${BASE_CHAIN_ID}
+      - START_BLOCK=${BASE_START_BLOCK:-0}
+      - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder_base
+      - DATABASE_SCHEMA=public
+    expose:
+      - "42069"
+    depends_on:
+      - postgres
+
+  indexer-arb:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.indexer
+    profiles: [arbitrum]
+    environment:
+      - RPC_URL=${ARB_RPC_URL}
+      - FACTORY_ADDRESS=${ARB_FACTORY_ADDRESS}
+      - CHAIN_ID=${ARB_CHAIN_ID}
+      - START_BLOCK=${ARB_START_BLOCK:-0}
+      - DATABASE_URL=postgres://ponder:ponder@postgres:5432/ponder_arb
       - DATABASE_SCHEMA=public
     expose:
       - "42069"
@@ -41,13 +76,16 @@ services:
       - POSTGRES_DB=ponder
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./init-postgres.sh:/docker-entrypoint-initdb.d/init-postgres.sh
 
   caddy:
     image: caddy:2-alpine
     environment:
       - API_DOMAIN=${API_DOMAIN}
-      - INDEXER_DOMAIN=${INDEXER_DOMAIN}
-      - RPC_DOMAIN=${RPC_DOMAIN}
+      - ANVIL_INDEXER_DOMAIN=${ANVIL_INDEXER_DOMAIN:-}
+      - ANVIL_RPC_DOMAIN=${ANVIL_RPC_DOMAIN:-}
+      - BASE_INDEXER_DOMAIN=${BASE_INDEXER_DOMAIN:-}
+      - ARB_INDEXER_DOMAIN=${ARB_INDEXER_DOMAIN:-}
     ports:
       - "80:80"
       - "443:443"
@@ -56,7 +94,6 @@ services:
       - caddy_data:/data
     depends_on:
       - prover
-      - indexer
 
 volumes:
   pgdata:
