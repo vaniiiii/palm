@@ -52,10 +52,8 @@ if [[ -z "$FACTORY" ]]; then
     exit 1
 fi
 
-EXTRA_FLAGS=()
-if [[ "$CHAIN" != "anvil" ]]; then
-    EXTRA_FLAGS+=(--skip-simulation)
-fi
+SKIP_SIM=""
+[[ "$CHAIN" != "anvil" ]] && SKIP_SIM="--skip-simulation"
 
 echo "Deploying Palm contracts on $CHAIN..."
 DEPLOY_OUTPUT=$(cd "$PALM_DIR/packages/contracts" && \
@@ -63,7 +61,7 @@ DEPLOY_OUTPUT=$(cd "$PALM_DIR/packages/contracts" && \
     forge script script/Deploy.s.sol:Deploy \
         --rpc-url "$RPC_URL" \
         --broadcast \
-        "${EXTRA_FLAGS[@]}" \
+        $SKIP_SIM \
         -v 2>&1) || true
 
 AUCTION=$(echo "$DEPLOY_OUTPUT" | grep -oE 'AUCTION=[^ ]+' | cut -d= -f2 | head -1)

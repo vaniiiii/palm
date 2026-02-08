@@ -98,26 +98,24 @@ update_env() {
          s|${prefix}_TOKEN_ADDRESS=.*|${prefix}_TOKEN_ADDRESS=$token|" .env > "$tmp" && mv "$tmp" .env
 }
 
-if [[ "$USE_ANVIL" == true ]]; then
-    echo "Deploying contracts on anvil..."
-    OUTPUT=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh anvil)
-    echo "$OUTPUT"
-    update_env "ANVIL" "$OUTPUT"
-fi
+deploy_chain() {
+    local chain="$1"
+    local prefix="$2"
+    echo "Deploying contracts on $chain..."
+    local output
+    if output=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh "$chain" 2>&1); then
+        echo "$output"
+        update_env "$prefix" "$output"
+    else
+        echo "ERROR: Deploy failed on $chain:"
+        echo "$output"
+        return 1
+    fi
+}
 
-if [[ "$USE_BASE" == true ]]; then
-    echo "Deploying contracts on base..."
-    OUTPUT=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh base)
-    echo "$OUTPUT"
-    update_env "BASE" "$OUTPUT"
-fi
-
-if [[ "$USE_ARB" == true ]]; then
-    echo "Deploying contracts on arbitrum..."
-    OUTPUT=$(ENABLE_KYC="$KYC_MODE" ./deploy-contracts.sh arbitrum)
-    echo "$OUTPUT"
-    update_env "ARB" "$OUTPUT"
-fi
+[[ "$USE_ANVIL" == true ]] && deploy_chain anvil ANVIL
+[[ "$USE_BASE" == true ]] && deploy_chain base BASE
+[[ "$USE_ARB" == true ]] && deploy_chain arbitrum ARB
 
 echo "Reloading env after deploy..."
 source .env
