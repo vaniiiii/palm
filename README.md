@@ -7,9 +7,9 @@ Cross-chain bidding powered by [LI.FI](https://li.fi) — bid from any chain int
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌────────────────────┐
+┌─────────────-┐     ┌──────────────┐     ┌────────────────────┐
 │  Frontend    │────▶│ Proving      │────▶│  CCA Auction       │
-│  (React)     │     │ Server (Bun) │     │  (Base / Arbitrum)  │
+│  (React)     │     │ Server (Bun) │     │  (Base / Arbitrum) |
 └──────┬───────┘     └──────────────┘     └────────┬───────────┘
        │                                           │
        │  LI.FI SDK                                │  validate()
